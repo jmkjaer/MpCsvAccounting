@@ -52,20 +52,20 @@ def writeTransactions(filePath, appendixStart, transactions, registrationTransfe
         transactionDate = datetime.datetime.strptime(transaction[1], "%d-%m-%Y")
         headlineDate = str(transactionDate.day) + "-" + str(transactionDate.month)
         
-        csvWriter.writerow([currAppendix, transaction[1], "MP " + headlineDate.zfill(5), "55000", floatToLocalStringFloat(transAmount)])
+        csvWriter.writerow([currAppendix, transaction[1], "MP " + headlineDate.zfill(5), "55000", floatToLocalStringFloat(transAmount), None])
         
         if transaction[1] != registrationTransferDate:
-            csvWriter.writerow([currAppendix, transaction[1], "Gavekort", "63080", "-" + floatToLocalStringFloat(voucherAmount)])
+            csvWriter.writerow([currAppendix, transaction[1], "Gavekort", "63080", "-" + floatToLocalStringFloat(voucherAmount), None])
         else:
             registrationFees = 200*numberOfRegistrationsInDay
             voucherAmount = transAmount + locale.atof(transaction[2]) - registrationFees
 
-            csvWriter.writerow([currAppendix, transaction[1], "Gavekort", "63080", "-" + floatToLocalStringFloat(voucherAmount)])
-            csvWriter.writerow([currAppendix, registrationTransferDate, "Tilmeldingsgebyr", "1000", "-" + floatToLocalStringFloat(registrationFees)])
+            csvWriter.writerow([currAppendix, transaction[1], "Gavekort", "63080", "-" + floatToLocalStringFloat(voucherAmount), None])
+            csvWriter.writerow([currAppendix, registrationTransferDate, "Tilmeldingsgebyr", "1000", "-" + floatToLocalStringFloat(registrationFees), None])
 
             registrationTransferCounts.pop(0)
 
-        csvWriter.writerow([currAppendix, transaction[1], "MP-gebyr", "7220", transaction[2]])
+        csvWriter.writerow([currAppendix, transaction[1], "MP-gebyr", "7220", transaction[2], None])
 
         currAppendix += 1
 
