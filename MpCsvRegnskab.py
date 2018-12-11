@@ -1,5 +1,14 @@
-from pathlib import Path
 import csv
+from pathlib import Path
+import locale
+import datetime
+
+def prepareCsvReader(filePath):
+    file = open(filePath, "r", newline='', encoding="utf-16-le")
+    next(file)
+    next(file)
+
+    return csv.reader(file, delimiter=";")
 
 def readTransactionsFromFile(filePath):
     transactions = []
@@ -19,46 +28,64 @@ def readTransactionsFromFile(filePath):
 
     return transactions, registrationTransfers
 
-def writeTransactions(appendixStart, transactions, transactionTransfers):
-    currTransferIndex = 0
-    currAppendix = appendixStart
-    csvWriter = prepareCsvWriter()
-    csvWriter.writerow(["Bilag nr.", "Dato", "Tekst", "Konto", "Beløb", "Modkonto"])
-
-    for transaction in transactions:
-        csvWriter.writerow([currAppendix, transaction[1], "MP test", "55000", transaction[0]])
-        csvWriter.writerow([currAppendix, transaction[1], "Overførsler", "63080", transaction[0]])
-        if transactionTransfers[currTransferIndex] == transaction[1]:
-            csvWriter.writerow([currAppendix, transaction[1], "Tilmeldingsgebyr", "1000", ])
-        csvWriter.writerow([currAppendix, transaction[1], "Gebyr", "7220", transaction[2]])
-
-        currAppendix += 1
-
-def prepareCsvWriter():
-    file = open("filePath.csv", "w", newline='')
+def prepareCsvWriter(filePath):
+    file = open(filePath, "w", newline='')
     csvWriter = csv.writer(file, delimiter=";")
     return csvWriter
 
-def prepareCsvReader(filePath):
-    file = open(filePath, "r", newline='', encoding="utf-16-le")
-    next(file)
-    next(file)
+def floatToLocalStringFloat(float):
+    return str(float).replace(".", ",")
 
-    return csv.reader(file, delimiter=";")
+def writeTransactions(filePath, appendixStart, transactions, registrationTransferCounts):
+    currTransferIndex = 0
+    currAppendix = appendixStart
+    csvWriter = prepareCsvWriter(filePath)
+
+    csvWriter.writerow(["Bilag nr.", "Dato", "Tekst", "Konto", "Beløb", "Modkonto"])
+
+    for i, transaction in enumerate(transactions):
+        # A registration transfer can happen a number of times in a day
+        registrationTransferDate = registrationTransferCounts[0][0]
+        numberOfRegistrationsInDay = int(registrationTransferCounts[0][1])
+        transAmount = locale.atof(transaction[0])
+        voucherAmount = transAmount + locale.atof(transaction[2])
+        transactionDate = datetime.datetime.strptime(transaction[1], "%d-%m-%Y")
+        headlineDate = str(transactionDate.day) + "-" + str(transactionDate.month)
+        
+        csvWriter.writerow([currAppendix, transaction[1], "MP " + headlineDate.zfill(5), "55000", floatToLocalStringFloat(transAmount)])
+        
+        if transaction[1] != registrationTransferDate:
+            csvWriter.writerow([currAppendix, transaction[1], "Gavekort", "63080", "-" + floatToLocalStringFloat(voucherAmount)])
+        else:
+            registrationFees = 200*numberOfRegistrationsInDay
+            voucherAmount = transAmount + locale.atof(transaction[2]) - registrationFees
+
+            csvWriter.writerow([currAppendix, transaction[1], "Gavekort", "63080", "-" + floatToLocalStringFloat(voucherAmount)])
+            csvWriter.writerow([currAppendix, registrationTransferDate, "Tilmeldingsgebyr", "1000", "-" + floatToLocalStringFloat(registrationFees)])
+
+            registrationTransferCounts.pop(0)
+
+        csvWriter.writerow([currAppendix, transaction[1], "MP-gebyr", "7220", transaction[2]])
+
+        currAppendix += 1
+
+def main():
+    locale.setlocale(locale.LC_NUMERIC, "en_DK.UTF-8")
+
+    filename = input("File name (on Desktop):\n> ")
+    appendixStart = int(input("\nAppendix number start:\n> "))
+    readPath = str(Path.cwd()) + "/" + filename
+    writePath = str(Path.cwd()) + "/dinero_" + filename
+
+    transactions, registrationTransfers = readTransactionsFromFile(readPath)
+
+    registrationTransferCounts = [[transfer, registrationTransfers.count(transfer)] for transfer in set(registrationTransfers)]
+    registrationTransferCounts.sort(key=lambda x: x[0])
+
+    writeTransactions(writePath, appendixStart, transactions, registrationTransferCounts)
+
+    print("\nDone writing to " + writePath)
 
 
-filename = input("File name (on Desktop):\n> ")
-appendixStart = int(input("\nAppendix number start:\n> "))
-readPath = str(Path.cwd()) + "/" + filename
-writePath = readPath + "/dinero_" + filename
-
-transactions, registrationTransfers = readTransactionsFromFile(readPath)
-
-transfers = [[transfer, registrationTransfers.count(transfer)] for transfer in set(registrationTransfers)]
-transfers.sort(key=lambda x: x[0])
-
-writeTransactions(appendixStart, transactions, registrationTransfers)
-
-
-print(test)
-# print(test1)
+if __name__ == "__main__":
+    main()
