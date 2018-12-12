@@ -3,6 +3,12 @@ from pathlib import Path
 import locale
 import datetime
 
+class Account(str):
+    NORDJYSKE = "55000"
+    GAVEKORT = "63080"
+    GEBYRER = "7220"
+    SALG = "1000"
+
 def prepareCsvReader(filePath):
     file = open(filePath, "r", newline='', encoding="utf-16-le")
     next(file)
@@ -33,7 +39,7 @@ def prepareCsvWriter(filePath):
     csvWriter = csv.writer(file, delimiter=";")
     return csvWriter
 
-def floatToLocalStringFloat(float):
+def floatToLocalStringDecimal(float):
     return str(float).replace(".", ",")
 
 def writeTransactions(filePath, appendixStart, transactions, registrationTransferCounts):
@@ -46,26 +52,27 @@ def writeTransactions(filePath, appendixStart, transactions, registrationTransfe
     for i, transaction in enumerate(transactions):
         # A registration transfer can happen a number of times in a day
         registrationTransferDate = registrationTransferCounts[0][0]
-        numberOfRegistrationsInDay = int(registrationTransferCounts[0][1])
+        registrationsCount = int(registrationTransferCounts[0][1])
         transAmount = locale.atof(transaction[0])
         voucherAmount = transAmount + locale.atof(transaction[2])
         transactionDate = datetime.datetime.strptime(transaction[1], "%d-%m-%Y")
         headlineDate = str(transactionDate.day) + "-" + str(transactionDate.month)
+        transactionDate = transaction[1]
         
-        csvWriter.writerow([currAppendix, transaction[1], "MP " + headlineDate.zfill(5), "55000", floatToLocalStringFloat(transAmount), None])
+        csvWriter.writerow([currAppendix, transactionDate, "MP " + headlineDate.zfill(5), Account.NORDJYSKE, floatToLocalStringDecimal(transAmount), None])
         
         if transaction[1] != registrationTransferDate:
-            csvWriter.writerow([currAppendix, transaction[1], "Gavekort", "63080", "-" + floatToLocalStringFloat(voucherAmount), None])
+            csvWriter.writerow([currAppendix, transactionDate, "Gavekort", Account.GAVEKORT, "-" + floatToLocalStringDecimal(voucherAmount), None])
         else:
-            registrationFees = 200*numberOfRegistrationsInDay
+            registrationFees = 200*registrationsCount
             voucherAmount = transAmount + locale.atof(transaction[2]) - registrationFees
 
-            csvWriter.writerow([currAppendix, transaction[1], "Gavekort", "63080", "-" + floatToLocalStringFloat(voucherAmount), None])
-            csvWriter.writerow([currAppendix, registrationTransferDate, "Tilmeldingsgebyr", "1000", "-" + floatToLocalStringFloat(registrationFees), None])
+            csvWriter.writerow([currAppendix, transaction[1], "Gavekort", Account.GAVEKORT, "-" + floatToLocalStringDecimal(voucherAmount), None])
+            csvWriter.writerow([currAppendix, registrationTransferDate, "Tilmeldingsgebyr", Account.SALG, "-" + floatToLocalStringDecimal(registrationFees), None])
 
-            registrationTransferCounts.pop(0)
+            del registrationTransferCounts[0]
 
-        csvWriter.writerow([currAppendix, transaction[1], "MP-gebyr", "7220", transaction[2], None])
+        csvWriter.writerow([currAppendix, transactionDate, "MP-gebyr", Account.GEBYRER, transaction[2], None])
 
         currAppendix += 1
 
