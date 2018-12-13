@@ -22,16 +22,17 @@ def prepareCsvReader(filePath):
 def readTransactionsFromFile(filePath):
     reader = prepareCsvReader(filePath)
     transactions = []
-    transactionsByDate = []
+    transactionsByBatch = []
 
     for row in reader:
         if row[0] == "Salg":
+            # Amount, date, message, MP fee
             transactions.append((row[3], row[6], row[9], row[10]))
             continue
         elif row[0] == "Overførsel":
             # The imported CSV starts with a "Gebyr" and an "Overførsel"
             if len(transactions) > 0:
-                transactionsByDate.append(transactions)
+                transactionsByBatch.append(transactions)
                 transactions = []
             continue
         elif row[0] == "Gebyr":
@@ -39,9 +40,9 @@ def readTransactionsFromFile(filePath):
         else:
             raise ValueError("Unknown transaction type")
     # The imported CSV ends with a bunch of sales with no "Overførsel"
-    transactionsByDate.append(transactions)
+    transactionsByBatch.append(transactions)
 
-    return transactionsByDate
+    return transactionsByBatch
 
 
 def prepareCsvWriter(filePath):
@@ -58,14 +59,14 @@ def isRegistration(transaction):
     return "tilmeld" in transaction[2].lower() or "indmeld" in transaction[2].lower()
 
 
-def calculateDay(day):
+def calculateBatchInfo(batch):
     registrationFee = 200
     registrationFees = 0
     voucherAmount = 0
     mpFees = 0
     toBank = 0
 
-    for transaction in day:
+    for transaction in batch:
         mpFee = locale.atof(transaction[3])
         transAmount = locale.atof(transaction[0])
 
@@ -81,22 +82,22 @@ def calculateDay(day):
     return (toBank, mpFees, registrationFees, voucherAmount)
 
 
-def writeTransactions(filePath, appendixStart, transactionsByDay):
+def writeTransactions(filePath, appendixStart, transactionsByBatch):
     currTransferIndex = 0
     currAppendix = appendixStart
     csvWriter = prepareCsvWriter(filePath)
 
     csvWriter.writerow(["Bilag nr.", "Dato", "Tekst", "Konto", "Beløb", "Modkonto"])
 
-    for day in transactionsByDay:
-        dayDate = datetime.datetime.strptime(day[0][1], "%d-%m-%Y")
-        headlineDate = str(dayDate.day) + "-" + str(dayDate.month)
-        toBank, mpFees, registrationFees, voucherAmount = calculateDay(day)
+    for batch in transactionsByBatch:
+        batchDate = datetime.datetime.strptime(batch[0][1], "%d-%m-%Y")
+        headlineDate = str(batchDate.day) + "-" + str(batchDate.month)
+        toBank, mpFees, registrationFees, voucherAmount = calculateBatchInfo(batch)
 
         csvWriter.writerow(
             [
                 currAppendix,
-                dayDate,
+                batchDate,
                 "MP " + headlineDate.zfill(5),
                 Account.BANK,
                 floatToLocalStringDecimal(toBank),
@@ -107,7 +108,7 @@ def writeTransactions(filePath, appendixStart, transactionsByDay):
         csvWriter.writerow(
             [
                 currAppendix,
-                dayDate,
+                batchDate,
                 "Gavekort",
                 Account.GAVEKORT,
                 "-" + floatToLocalStringDecimal(voucherAmount),
@@ -119,7 +120,7 @@ def writeTransactions(filePath, appendixStart, transactionsByDay):
             csvWriter.writerow(
                 [
                     currAppendix,
-                    dayDate,
+                    batchDate,
                     "Tilmeldingsgebyr",
                     Account.SALG,
                     "-" + floatToLocalStringDecimal(registrationFees),
@@ -130,7 +131,7 @@ def writeTransactions(filePath, appendixStart, transactionsByDay):
         csvWriter.writerow(
             [
                 currAppendix,
-                dayDate,
+                batchDate,
                 "MP-gebyr",
                 Account.GEBYRER,
                 floatToLocalStringDecimal(mpFees),
@@ -149,9 +150,9 @@ def main():
     readPath = str(Path.cwd()) + "/" + filename
     writePath = str(Path.cwd()) + "/dinero_" + filename
 
-    transactionsByDay = readTransactionsFromFile(readPath)
+    transactionsByBatch = readTransactionsFromFile(readPath)
 
-    writeTransactions(writePath, appendixStart, transactionsByDay)
+    writeTransactions(writePath, appendixStart, transactionsByBatch)
 
     print("\nDone writing to " + writePath)
 
