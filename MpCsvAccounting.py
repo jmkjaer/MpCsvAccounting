@@ -1,13 +1,15 @@
 import csv
-from pathlib import Path
-import locale
 import datetime
+import locale
+from pathlib import Path
+
 
 class Account(str):
     NORDJYSKE = "55000"
     GAVEKORT = "63080"
     GEBYRER = "7220"
     SALG = "1000"
+
 
 def prepareCsvReader(filePath):
     file = open(filePath, "r", newline='', encoding="utf-16-le")
@@ -16,31 +18,45 @@ def prepareCsvReader(filePath):
 
     return csv.reader(file, delimiter=";")
 
+
+def isRegistration(transaction):
+    return "tilmeld" in transaction[2].lower() or "indmeld" in transaction[2].lower()
+
+
 def readTransactionsFromFile(filePath):
-    transactions = []
-    registrationTransfers = []
     reader = prepareCsvReader(filePath)
+    transactions = []
+    transactionsByDate = []
     
     for row in reader:
-        if row[0] == "Refundering" or row[0] == "Gebyr":
-            continue
-        if "tilmeld" in row[9].lower() or "indmeld" in row[9].lower():
-            registrationTransfers.append(row[6])
-            continue
         if row[0] == "Salg":
+            transactions.append((row[3], row[6], row[9], row[10]))
             continue
+        elif row[0] == "Overførsel":
+            # The imported CSV starts with a "Gebyr" and an "Overførsel"
+            if len(transactions) > 0:
+                transactionsByDate.append(transactions)
+                transactions = []
+            continue
+        elif row[0] == "Gebyr":
+            continue
+        else:
+            raise ValueError("Unknown transaction type")
+    # The imported CSV ends with a bunch of sales with no "Overførsel"
+    transactionsByDate.append(transactions)
 
-        transactions.append([row[3], row[6], row[10]])
+    return transactionsByDate
 
-    return transactions, registrationTransfers
 
 def prepareCsvWriter(filePath):
     file = open(filePath, "w", newline='')
     csvWriter = csv.writer(file, delimiter=";")
     return csvWriter
 
+
 def floatToLocalStringDecimal(float):
     return str(float).replace(".", ",")
+
 
 def writeTransactions(filePath, appendixStart, transactions, registrationTransferCounts):
     currTransferIndex = 0
@@ -76,6 +92,7 @@ def writeTransactions(filePath, appendixStart, transactions, registrationTransfe
 
         currAppendix += 1
 
+
 def main():
     locale.setlocale(locale.LC_NUMERIC, "en_DK.UTF-8")
 
@@ -84,12 +101,9 @@ def main():
     readPath = str(Path.cwd()) + "/" + filename
     writePath = str(Path.cwd()) + "/dinero_" + filename
 
-    transactions, registrationTransfers = readTransactionsFromFile(readPath)
+    transactionsByDate = readTransactionsFromFile(readPath)
 
-    registrationTransferCounts = [[transfer, registrationTransfers.count(transfer)] for transfer in set(registrationTransfers)]
-    registrationTransferCounts.sort(key=lambda x: x[0])
-
-    writeTransactions(writePath, appendixStart, transactions, registrationTransferCounts)
+    # writeTransactions(writePath, appendixStart, transactions, registrationTransferCounts)
 
     print("\nDone writing to " + writePath)
 
