@@ -116,9 +116,11 @@ def calculateBatchInfo(batch, registrationFee=200):
     return (toBank, mpFees, registrationFees, voucherAmount)
 
 
-# https://stackoverflow.com/a/42824111
 def nextBusinessDay(date):
-    """Returns the next business day for bank transfer."""
+    """Returns the next business day for bank transfer.
+    
+    With help from https://stackoverflow.com/a/42824111
+    """
 
     nextDay = date.date() + datetime.timedelta(days=1)
     while nextDay.weekday() in holidays.WEEKEND or nextDay in HOLIDAYS_DK:
