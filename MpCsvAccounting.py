@@ -92,6 +92,7 @@ def writeTransactions(filePath, appendixStart, transactionsByBatch):
     for batch in transactionsByBatch:
         batchDate = datetime.datetime.strptime(batch[0][1], "%d-%m-%Y")
         headlineDate = str(batchDate.day) + "-" + str(batchDate.month)
+        print("MP " + headlineDate.zfill(5))
         toBank, mpFees, registrationFees, voucherAmount = calculateBatchInfo(batch)
 
         csvWriter.writerow(
@@ -145,16 +146,16 @@ def writeTransactions(filePath, appendixStart, transactionsByBatch):
 def main():
     locale.setlocale(locale.LC_NUMERIC, "en_DK.UTF-8")
 
-    filename = input("File name (on Desktop):\n> ")
+    filename = input("File name (from " + str(Path.cwd()) + "):\n> ")
     appendixStart = int(input("\nAppendix number start:\n> "))
-    readPath = str(Path.cwd()) + "/" + filename
-    writePath = str(Path.cwd()) + "/dinero_" + filename
+    readPath = Path.cwd() / filename
+    writePath = Path.cwd() / ('dinero_' + filename)
 
     transactionsByBatch = readTransactionsFromFile(readPath)
 
-    writeTransactions(writePath, appendixStart, transactionsByBatch)
+    writeTransactions(str(writePath), appendixStart, transactionsByBatch)
 
-    print("\nDone writing to " + writePath)
+    print("\nDone writing to " + str(writePath))
 
 
 if __name__ == "__main__":
