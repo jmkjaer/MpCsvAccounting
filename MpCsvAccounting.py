@@ -1,7 +1,11 @@
 import csv
 import datetime
+import holidays
 import locale
 from pathlib import Path
+
+
+HOLIDAYS_DK = holidays.DK()
 
 
 class Account(str):
@@ -82,6 +86,15 @@ def calculateBatchInfo(batch):
     return (toBank, mpFees, registrationFees, voucherAmount)
 
 
+# https://stackoverflow.com/a/42824111
+def nextBusinessDay(date):
+    nextDay = date.date() + datetime.timedelta(days=1)
+    while nextDay.weekday() in holidays.WEEKEND or nextDay in HOLIDAYS_DK:
+        nextDay += datetime.timedelta(days=1)
+
+    return nextDay
+
+
 def writeTransactions(filePath, appendixStart, transactionsByBatch):
     currTransferIndex = 0
     currAppendix = appendixStart
@@ -91,29 +104,27 @@ def writeTransactions(filePath, appendixStart, transactionsByBatch):
 
     for batch in transactionsByBatch:
         batchDate = datetime.datetime.strptime(batch[0][1], "%d-%m-%Y")
-        headlineDate = str(batchDate.day) + "-" + str(batchDate.month)
-        print("MP " + headlineDate.zfill(5))
+        bankTransferDate = nextBusinessDay(batchDate)
         toBank, mpFees, registrationFees, voucherAmount = calculateBatchInfo(batch)
 
-        csvWriter.writerow(
+        csvWriter.writerows(
             [
-                currAppendix,
-                batchDate,
-                "MP " + headlineDate.zfill(5),
-                Account.BANK,
-                floatToLocalStringDecimal(toBank),
-                None,
-            ]
-        )
-
-        csvWriter.writerow(
-            [
-                currAppendix,
-                batchDate,
-                "Gavekort",
-                Account.GAVEKORT,
-                "-" + floatToLocalStringDecimal(voucherAmount),
-                None,
+                [
+                    currAppendix,
+                    bankTransferDate,
+                    "MP " + (str(batchDate.day) + "-" + str(batchDate.month)).zfill(5),
+                    Account.BANK,
+                    floatToLocalStringDecimal(toBank),
+                    None,
+                ],
+                [
+                    currAppendix,
+                    bankTransferDate,
+                    "Gavekort",
+                    Account.GAVEKORT,
+                    "-" + floatToLocalStringDecimal(voucherAmount),
+                    None,
+                ],
             ]
         )
 
@@ -121,7 +132,7 @@ def writeTransactions(filePath, appendixStart, transactionsByBatch):
             csvWriter.writerow(
                 [
                     currAppendix,
-                    batchDate,
+                    bankTransferDate,
                     "Tilmeldingsgebyr",
                     Account.SALG,
                     "-" + floatToLocalStringDecimal(registrationFees),
@@ -132,7 +143,7 @@ def writeTransactions(filePath, appendixStart, transactionsByBatch):
         csvWriter.writerow(
             [
                 currAppendix,
-                batchDate,
+                bankTransferDate,
                 "MP-gebyr",
                 Account.GEBYRER,
                 floatToLocalStringDecimal(mpFees),
@@ -149,7 +160,7 @@ def main():
     filename = input("File name (from " + str(Path.cwd()) + "):\n> ")
     appendixStart = int(input("\nAppendix number start:\n> "))
     readPath = Path.cwd() / filename
-    writePath = Path.cwd() / ('dinero_' + filename)
+    writePath = Path.cwd() / ("dinero_" + filename)
 
     transactionsByBatch = readTransactionsFromFile(readPath)
 
