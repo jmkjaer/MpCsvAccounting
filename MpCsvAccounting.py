@@ -1,3 +1,5 @@
+#!/usr/bin/env python3
+
 import csv
 import datetime
 import holidays
@@ -20,6 +22,7 @@ class Account(str):
 def prepareCsvReader(filePath):
     """Prepares the CSV reader by opening the file and skipping two lines."""
 
+    # Encoding is UTF-16, little-endian, due to MP using MS SQL Server
     file = open(filePath, "r", newline="", encoding="utf-16-le")
     next(file)
     next(file)
@@ -29,10 +32,6 @@ def prepareCsvReader(filePath):
 
 def readTransactionsFromFile(filePath):
     """Returns transactions in batches read from the CSV file exported by MP.
-    
-    We are not interested in the bank transactions or the fees listed by MP, \
-    only the actual user transactions (sales, or "Salg"), since they will be \
-    manipulated and used for calculation later.
     
     Returns a list of lists of user transactions bundled in transaction \
     batches before bank transfer.
@@ -90,7 +89,7 @@ def isRegistration(transaction):
 def calculateBatchInfo(batch, registrationFee=200):
     """Returns important information from a batch of transactions.
     
-    Calculates and returns the amount transferred to the bank, the fees by \
+    Returns the amount transferred to the bank, the fees by \
     MP, the registration fees paid by the members, and the voucher amount for \
     the members.
     """
