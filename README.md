@@ -9,11 +9,11 @@ MpCsvAccounting is written in [Python 3](https://www.python.org/downloads/) and 
 ## Installation
 
 The script currently has a single dependency, [holidays](https://pypi.org/project/holidays/). To install with pip, run
-```bash
+```
 python -m pip install --user -r requirements.txt
 ```
 or
-```bash
+```
 python -m pip install --user holidays==0.9.8
 ```
 
@@ -28,5 +28,5 @@ An example MP CSV is in the examples directory.
 
 ## License
 
-This script is licensed under the GNU General Public License v3.0 - see the (LICENSE)[LICENSE] file for details.
+This script is licensed under the GNU General Public License v3.0 - see the [LICENSE](LICENSE) file for details.
 
