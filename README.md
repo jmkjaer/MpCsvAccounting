@@ -4,7 +4,7 @@ This is a parser for MobilePay MyShop CSVs. It writes CSVs that Dinero accountin
 
 ## Prerequisites
 
-MpCsvAccounting is written in [Python 3](https://www.python.org/downloads/) and requires that it is installed on the system.
+The script is written in [Python 3](https://www.python.org/downloads/) and requires that it is installed on the system.
 
 ## Installation
 
@@ -21,7 +21,7 @@ python -m pip install --user holidays==0.9.8
 
 ```bash
 cd dir_with_MP_CSV
-python3 MpCsvAccounting.py
+python3 mp_csv_accounting.py
 ```
 
 An example MP CSV is in the examples directory.
