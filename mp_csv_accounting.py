@@ -64,7 +64,7 @@ def readTransactionsFromFile(filePath):
     """Returns transactions in batches read from the CSV file exported by MP.
     
     Returns a list of lists of user transactions bundled in transaction \
-    batches before bank transfer.
+    batches before bank transfer. Amount is in øre (1/100th of a krone).
     """
 
     reader = prepareCsvReader(filePath)
@@ -72,12 +72,15 @@ def readTransactionsFromFile(filePath):
     transactionsByBatch = []
 
     for index, row in enumerate(reader):
+        # Parse as øre (1/100th krone) instead of kroner
+        transferAmount = row[3].replace(",", "").replace(".", "")
+        mpFee = row[10].replace(",", "")
         if row[0] == "Salg":
             # Amount, date, message, MP fee
-            transactions.append((row[3], row[6], row[9], row[10]))
+            transactions.append((transferAmount, row[6], row[9], mpFee))
             continue
         elif row[0] == "Refundering":
-            transactions.append(("-" + row[3], row[6], row[9], row[10]))
+            transactions.append(("-" + transferAmount, row[6], row[9], mpFee))
             continue
         elif row[0] == "Overførsel":
             # The imported CSV starts with a "Gebyr" and an "Overførsel"
@@ -107,28 +110,21 @@ def prepareCsvWriter(filePath):
     return csvWriter
 
 
-def floatToLocalStringDecimal(float):
-    """Replaces decimal point with comma, used in import and export CSV."""
-
-    return str(float).replace(".", ",")
-
-
 def isRegistration(transaction):
     """Finds out if the transaction is part of a registration.
     
-    Searches for the substrings "tilmeld" and "indmeld" in the MP \
-    transaction comment.
+    Searches for the substrings "tilmeld" and "indmeld" in the MP transaction comment.
     """
 
     return "tilmeld" in transaction[2].lower() or "indmeld" in transaction[2].lower()
 
 
-def calculateBatchInfo(batch, registrationFee=200):
+def calculateBatchInfo(batch, registrationFee=20000):
     """Returns important information from a batch of transactions.
     
-    Returns the amount transferred to the bank, the fees by \
-    MP, the registration fees paid by the members, and the voucher amount for \
-    the members.
+    Returns the amount transferred to the bank, the fees by MP, \
+    the registration fees paid by the members, and the voucher amount for the members. \
+    Amount is in øre.
     """
 
     registrationFees = 0
@@ -137,8 +133,8 @@ def calculateBatchInfo(batch, registrationFee=200):
     toBank = 0
 
     for transaction in batch:
-        mpFee = locale.atof(transaction[3])
-        transAmount = locale.atof(transaction[0])
+        mpFee = int(transaction[3])
+        transAmount = int(transaction[0])
 
         mpFees += mpFee
         toBank += transAmount - mpFee
@@ -153,20 +149,26 @@ def calculateBatchInfo(batch, registrationFee=200):
 
 
 def nextBusinessDay(date):
-    """Returns the next business day for bank transfer."""
+    """Returns the next business day for bank transfer in dd-mm-yyyy format."""
 
     nextDay = date.date() + datetime.timedelta(days=1)
     while nextDay.weekday() in holidays.WEEKEND or nextDay in HOLIDAYS_DK:
         nextDay += datetime.timedelta(days=1)
 
-    return nextDay
+    return datetime.datetime.strftime(nextDay, "%d-%m-%Y")
+
+
+def toDecimalNumber(number):
+    """Formats an amount of øre to kroner."""
+
+    return locale.format_string("%.2f", number / 100)
 
 
 def writeTransactions(filePath, appendixStart, transactionsByBatch):
     """Writes the information gathered throughout the script to a CSV file.
     
-    The resulting CSV file is recognized by Dinero's journal entry CSV \
-    import. The written information is in Danish.
+    The resulting CSV file is recognized by Dinero's journal entry CSV import. \
+    The written information is in Danish.
     """
 
     currAppendix = appendixStart
@@ -175,9 +177,9 @@ def writeTransactions(filePath, appendixStart, transactionsByBatch):
     csvWriter.writerow(["Bilag nr.", "Dato", "Tekst", "Konto", "Beløb", "Modkonto"])
 
     for batch in transactionsByBatch:
+        toBank, mpFees, registrationFees, voucherAmount = calculateBatchInfo(batch)
         batchDate = datetime.datetime.strptime(batch[0][1], "%d-%m-%Y")
         bankTransferDate = nextBusinessDay(batchDate)
-        toBank, mpFees, registrationFees, voucherAmount = calculateBatchInfo(batch)
 
         csvWriter.writerow(
             [
@@ -185,7 +187,7 @@ def writeTransactions(filePath, appendixStart, transactionsByBatch):
                 bankTransferDate,
                 "MP " + (str(batchDate.day) + "-" + str(batchDate.month)).zfill(5),
                 Account.BANK,
-                floatToLocalStringDecimal(toBank),
+                toDecimalNumber(toBank),
                 None,
             ]
         )
@@ -195,7 +197,7 @@ def writeTransactions(filePath, appendixStart, transactionsByBatch):
                 bankTransferDate,
                 "Gavekort",
                 Account.GAVEKORT,
-                "-" + floatToLocalStringDecimal(voucherAmount),
+                "-" + toDecimalNumber(voucherAmount),
                 None,
             ]
         )
@@ -206,7 +208,7 @@ def writeTransactions(filePath, appendixStart, transactionsByBatch):
                     bankTransferDate,
                     "Tilmeldingsgebyr",
                     Account.SALG,
-                    "-" + floatToLocalStringDecimal(registrationFees),
+                    "-" + toDecimalNumber(registrationFees),
                     None,
                 ]
             )
@@ -216,7 +218,7 @@ def writeTransactions(filePath, appendixStart, transactionsByBatch):
                 bankTransferDate,
                 "MP-gebyr",
                 Account.GEBYRER,
-                floatToLocalStringDecimal(mpFees),
+                toDecimalNumber(mpFees),
                 None,
             ]
         )
@@ -227,9 +229,8 @@ def writeTransactions(filePath, appendixStart, transactionsByBatch):
 def main():
     """Reads a CSV by MP and writes a CSV recognizable by Dinero.
     
-    Note: The locale is set to be able to convert the Danish decimal numbers into \
-    floats instead of replacing the separator ourselves. May be removed in \
-    the future.
+    Note: The locale is set to be able to convert numbers as strings into Danish \
+    decimal numbers with comma as separator.
     """
 
     locale.setlocale(locale.LC_NUMERIC, "en_DK.UTF-8")
