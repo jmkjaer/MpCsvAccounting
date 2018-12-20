@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 
+import argparse
 import csv
 import datetime
 import holidays
@@ -17,6 +18,34 @@ class Account(str):
     GAVEKORT = "63080"
     GEBYRER = "7220"
     SALG = "1000"
+
+
+def parseArgs():
+    """Parses command-line arguments and returns them."""
+
+    parser = argparse.ArgumentParser(description="Parse MP CSV and write Dinero CSV.")
+    parser.add_argument("infile", help="the MP CSV file to parse")
+    parser.add_argument(
+        "appendix_start", type=int, help="appendix number start in Dinero"
+    )
+    parser.add_argument(
+        "-o",
+        "--outfile",
+        metavar="FILE",
+        help="write output to file (default: out.csv)",
+    )
+    return parser.parse_args()
+
+
+def handleOutFile(args):
+    if args.outfile:
+        writePath = args.outfile
+        if Path(args.outfile).parent:
+            Path(args.outfile).parent.mkdir(exist_ok=True)
+    else:
+        writePath = "out.csv"
+
+    return writePath
 
 
 def prepareCsvReader(filePath):
@@ -116,10 +145,7 @@ def calculateBatchInfo(batch, registrationFee=200):
 
 
 def nextBusinessDay(date):
-    """Returns the next business day for bank transfer.
-    
-    With help from https://stackoverflow.com/a/42824111
-    """
+    """Returns the next business day for bank transfer."""
 
     nextDay = date.date() + datetime.timedelta(days=1)
     while nextDay.weekday() in holidays.WEEKEND or nextDay in HOLIDAYS_DK:
@@ -145,27 +171,26 @@ def writeTransactions(filePath, appendixStart, transactionsByBatch):
         bankTransferDate = nextBusinessDay(batchDate)
         toBank, mpFees, registrationFees, voucherAmount = calculateBatchInfo(batch)
 
-        csvWriter.writerows(
+        csvWriter.writerow(
             [
-                [
-                    currAppendix,
-                    bankTransferDate,
-                    "MP " + (str(batchDate.day) + "-" + str(batchDate.month)).zfill(5),
-                    Account.BANK,
-                    floatToLocalStringDecimal(toBank),
-                    None,
-                ],
-                [
-                    currAppendix,
-                    bankTransferDate,
-                    "Gavekort",
-                    Account.GAVEKORT,
-                    "-" + floatToLocalStringDecimal(voucherAmount),
-                    None,
-                ],
+                currAppendix,
+                bankTransferDate,
+                "MP " + (str(batchDate.day) + "-" + str(batchDate.month)).zfill(5),
+                Account.BANK,
+                floatToLocalStringDecimal(toBank),
+                None,
             ]
         )
-
+        csvWriter.writerow(
+            [
+                currAppendix,
+                bankTransferDate,
+                "Gavekort",
+                Account.GAVEKORT,
+                "-" + floatToLocalStringDecimal(voucherAmount),
+                None,
+            ]
+        )
         if registrationFees > 0:
             csvWriter.writerow(
                 [
@@ -177,7 +202,6 @@ def writeTransactions(filePath, appendixStart, transactionsByBatch):
                     None,
                 ]
             )
-
         csvWriter.writerow(
             [
                 currAppendix,
@@ -195,22 +219,20 @@ def writeTransactions(filePath, appendixStart, transactionsByBatch):
 def main():
     """Reads a CSV by MP and writes a CSV recognizable by Dinero.
     
-    The locale is set to be able to convert the Danish decimal numbers into \
+    Note: The locale is set to be able to convert the Danish decimal numbers into \
     floats instead of replacing the separator ourselves. May be removed in \
     the future.
     """
+
     locale.setlocale(locale.LC_NUMERIC, "en_DK.UTF-8")
 
-    filename = input("File name (from " + str(Path.cwd()) + "):\n> ")
-    appendixStart = int(input("\nAppendix number start:\n> "))
-    readPath = Path.cwd() / filename
-    writePath = Path.cwd() / ("dinero_" + filename)
+    args = parseArgs()
+    writePath = handleOutFile(args)
 
-    transactionsByBatch = readTransactionsFromFile(readPath)
+    transactionsByBatch = readTransactionsFromFile(args.infile)
+    writeTransactions(writePath, args.appendix_start, transactionsByBatch)
 
-    writeTransactions(str(writePath), appendixStart, transactionsByBatch)
-
-    print("\nDone writing to " + str(writePath))
+    print("Done writing to " + writePath)
 
 
 if __name__ == "__main__":

@@ -8,7 +8,7 @@ The script is written in [Python 3](https://www.python.org/downloads/) and requi
 
 ## Installation
 
-The script currently has a single dependency, [holidays](https://pypi.org/project/holidays/). To install with pip, run
+The script currently has a single dependency, [holidays](https://github.com/dr-prodigy/python-holidays). To install with pip, run
 ```
 python -m pip install --user -r requirements.txt
 ```
