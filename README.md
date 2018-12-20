@@ -19,7 +19,7 @@ python -m pip install --user -r requirements.txt
 
 ## Usage
 
-To output to "out.csv", passing input filen and appendix start:
+To output to "out.csv", passing input file and appendix start:
 ```bash
 python3 mp_csv_accounting.py examples/mpExample.csv 123
 ```
