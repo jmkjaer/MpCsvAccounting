@@ -9,19 +9,24 @@ The script is written in [Python 3](https://www.python.org/downloads/) and requi
 ## Installation
 
 The script currently has a single dependency, [holidays](https://github.com/dr-prodigy/python-holidays). To install with pip, run
-```
-python -m pip install --user -r requirements.txt
+```bash
+python -m pip install --user holidays==0.9.8
 ```
 or
-```
-python -m pip install --user holidays==0.9.8
+```bash
+python -m pip install --user -r requirements.txt
 ```
 
 ## Usage
 
+To output to "out.csv", passing input filen and appendix start:
 ```bash
-cd dir_with_MP_CSV
-python3 mp_csv_accounting.py
+python3 mp_csv_accounting.py examples/mpExample.csv 123
+```
+
+To output to "somename.csv" in "somedir", passing input file, appendix start, and output file:
+```bash
+python3 mp_csv_accounting.py examples/mpExample.csv 123 -o someDir/somename.csv
 ```
 
 An example MP CSV is in the examples directory.
@@ -29,4 +34,3 @@ An example MP CSV is in the examples directory.
 ## License
 
 This script is licensed under the GNU General Public License v3.0 - see the [LICENSE](LICENSE) file for details.
-
