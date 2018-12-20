@@ -6,6 +6,7 @@ import datetime
 import holidays
 import locale
 from pathlib import Path
+import sys
 
 
 HOLIDAYS_DK = holidays.DK()
@@ -70,10 +71,13 @@ def readTransactionsFromFile(filePath):
     transactions = []
     transactionsByBatch = []
 
-    for row in reader:
+    for index, row in enumerate(reader):
         if row[0] == "Salg":
             # Amount, date, message, MP fee
             transactions.append((row[3], row[6], row[9], row[10]))
+            continue
+        elif row[0] == "Refundering":
+            transactions.append(("-" + row[3], row[6], row[9], row[10]))
             continue
         elif row[0] == "Overførsel":
             # The imported CSV starts with a "Gebyr" and an "Overførsel"
@@ -84,7 +88,11 @@ def readTransactionsFromFile(filePath):
         elif row[0] == "Gebyr":
             continue
         else:
-            raise ValueError("Unknown transaction type")
+            raise ValueError(
+                "Error: Unknown transaction type '{}'\n  File {}, line {}".format(
+                    row[0], filePath, str(index + 3)
+                )
+            )
     # The imported CSV ends with a batch of sales with no "Overførsel"
     transactionsByBatch.append(transactions)
 
@@ -229,7 +237,11 @@ def main():
     args = parseArgs()
     writePath = handleOutFile(args)
 
-    transactionsByBatch = readTransactionsFromFile(args.infile)
+    try:
+        transactionsByBatch = readTransactionsFromFile(args.infile)
+    except ValueError as e:
+        print(e)
+        sys.exit()
     writeTransactions(writePath, args.appendix_start, transactionsByBatch)
 
     print("Done writing to " + writePath)
