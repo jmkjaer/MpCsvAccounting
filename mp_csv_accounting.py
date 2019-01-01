@@ -84,7 +84,7 @@ def readTransactionsFromFile(filePath):
             continue
         elif row[0] == "Overførsel":
             # The imported CSV starts with a "Gebyr" and an "Overførsel"
-            if len(transactions) > 0:
+            if transactions:
                 transactionsByBatch.append(transactions)
                 transactions = []
             continue
@@ -96,8 +96,9 @@ def readTransactionsFromFile(filePath):
                     row[0], filePath, str(index + 3)
                 )
             )
-    # The imported CSV ends with a batch of sales with no "Overførsel"
-    transactionsByBatch.append(transactions)
+    # The imported CSV possibly ends with a batch of sales with no "Overførsel"
+    if transactions:
+        transactionsByBatch.append(transactions)
 
     return transactionsByBatch
 
