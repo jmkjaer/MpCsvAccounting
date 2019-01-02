@@ -5,15 +5,15 @@ import csv
 import datetime
 import holidays
 import locale
-from pathlib import Path
 import sys
+from pathlib import Path
 
 
 HOLIDAYS_DK = holidays.DK()
 
 
-class Account(str):
-    """String constants for Dinero's bank accounts."""
+class Account:
+    """String constants for Dinero's accounts."""
 
     BANK = "55000"
     GAVEKORT = "63080"

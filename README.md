@@ -4,27 +4,27 @@ This is a parser for MobilePay MyShop CSVs. It writes CSVs that Dinero accountin
 
 ## Prerequisites
 
-The script is written in [Python 3](https://www.python.org/downloads/) and requires that it is installed on the system.
+The script is written in [Python 3](https://www.python.org/downloads/) and requires it to be installed on the system.
 
 ## Installation
 
 The script currently has a single dependency, [holidays](https://github.com/dr-prodigy/python-holidays). To install with pip, run
 ```bash
-python -m pip install --user holidays==0.9.8
+python3 -m pip install --user holidays==0.9.8
 ```
 or
 ```bash
-python -m pip install --user -r requirements.txt
+python3 -m pip install --user -r requirements.txt
 ```
 
 ## Usage
 
-To output to "out.csv", passing input file and appendix start:
+To output to "out.csv" in current dir, pass input file and appendix start:
 ```bash
 python3 mp_csv_accounting.py examples/mpExample.csv 123
 ```
 
-To output to "somename.csv" in "somedir", passing input file, appendix start, and output file:
+To output to "somename.csv" in "somedir", pass input file, appendix start, and output file:
 ```bash
 python3 mp_csv_accounting.py examples/mpExample.csv 123 -o someDir/somename.csv
 ```
