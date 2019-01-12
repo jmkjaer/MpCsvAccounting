@@ -3,13 +3,24 @@
 import argparse
 import csv
 import datetime
-import holidays
 import locale
 import sys
 from pathlib import Path
 
+import holidays
+from dateutil.easter import easter
+from dateutil.relativedelta import relativedelta as rd
 
-HOLIDAYS_DK = holidays.DK()
+
+class DanishBankHolidays(holidays.DK):
+    """Bank holidays in Denmark in addition to normal holidays."""
+
+    def _populate(self, year):
+        holidays.DK._populate(self, year)
+        self[easter(year) + rd(days=40)] = "Banklukkedag"  # Day after Ascension Day
+        self[datetime.date(year, 6, 5)] = "Banklukkedag"  # Danish Constitution Day
+        self[datetime.date(year, 12, 24)] = "Banklukkedag"  # Christmas Eve
+        self[datetime.date(year, 12, 31)] = "Banklukkedag"  # New Year's Eve
 
 
 class Account:
@@ -19,6 +30,9 @@ class Account:
     GAVEKORT = "63080"
     GEBYRER = "7220"
     SALG = "1000"
+
+
+DANISH_BANK_HOLIDAYS = DanishBankHolidays()
 
 
 def parseArgs():
@@ -153,7 +167,7 @@ def nextBusinessDay(date):
     """Returns the next business day for bank transfer in dd-mm-yyyy format."""
 
     nextDay = date.date() + datetime.timedelta(days=1)
-    while nextDay.weekday() in holidays.WEEKEND or nextDay in HOLIDAYS_DK:
+    while nextDay.weekday() in holidays.WEEKEND or nextDay in DANISH_BANK_HOLIDAYS:
         nextDay += datetime.timedelta(days=1)
 
     return datetime.datetime.strftime(nextDay, "%d-%m-%Y")
