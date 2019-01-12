@@ -2,13 +2,12 @@
 
 import argparse
 import csv
-import datetime
+import datetime as dt
 import sys
 from pathlib import Path
 
 import holidays
 from dateutil.easter import easter
-from dateutil.relativedelta import relativedelta as rd
 
 
 class DanishBankHolidays(holidays.DK):
@@ -16,10 +15,12 @@ class DanishBankHolidays(holidays.DK):
 
     def _populate(self, year):
         holidays.DK._populate(self, year)
-        self[easter(year) + rd(days=40)] = "Banklukkedag"  # Day after Ascension Day
-        self[datetime.date(year, 6, 5)] = "Banklukkedag"  # Danish Constitution Day
-        self[datetime.date(year, 12, 24)] = "Banklukkedag"  # Christmas Eve
-        self[datetime.date(year, 12, 31)] = "Banklukkedag"  # New Year's Eve
+        self[
+            easter(year) + dt.timedelta(days=40)  # Day after Ascension Day
+        ] = "Banklukkedag"
+        self[dt.date(year, 6, 5)] = "Banklukkedag"  # Danish Constitution Day
+        self[dt.date(year, 12, 24)] = "Banklukkedag"  # Christmas Eve
+        self[dt.date(year, 12, 31)] = "Banklukkedag"  # New Year's Eve
 
 
 class Account:
@@ -165,11 +166,11 @@ def calculateBatchInfo(batch, registrationFee=20000):
 def nextBusinessDay(date):
     """Returns the next business day for bank transfer in dd-mm-yyyy format."""
 
-    nextDay = date.date() + datetime.timedelta(days=1)
+    nextDay = date.date() + dt.timedelta(days=1)
     while nextDay.weekday() in holidays.WEEKEND or nextDay in DANISH_BANK_HOLIDAYS:
-        nextDay += datetime.timedelta(days=1)
+        nextDay += dt.timedelta(days=1)
 
-    return datetime.datetime.strftime(nextDay, "%d-%m-%Y")
+    return dt.datetime.strftime(nextDay, "%d-%m-%Y")
 
 
 def toDecimalNumber(number):
@@ -189,9 +190,7 @@ def writeTransactions(filePath, appendixStart, transactionsByBatch):
     csvWriter = prepareCsvWriter(filePath)
 
     try:
-        csvWriter.writerow(
-            ["Bilag nr.", "Dato", "Tekst", "Konto", "Beløb", "Modkonto"]
-        )
+        csvWriter.writerow(["Bilag nr.", "Dato", "Tekst", "Konto", "Beløb", "Modkonto"])
     except UnicodeEncodeError:
         csvWriter.writerow(
             ["Bilag nr.", "Dato", "Tekst", "Konto", "Beløb".encode("utf-8"), "Modkonto"]
@@ -199,7 +198,7 @@ def writeTransactions(filePath, appendixStart, transactionsByBatch):
 
     for batch in transactionsByBatch:
         toBank, mpFees, registrationFees, voucherAmount = calculateBatchInfo(batch)
-        batchDate = datetime.datetime.strptime(batch[0][1], "%d-%m-%Y")
+        batchDate = dt.datetime.strptime(batch[0][1], "%d-%m-%Y")
         bankTransferDate = nextBusinessDay(batchDate)
 
         csvWriter.writerow(
