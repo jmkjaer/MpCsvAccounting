@@ -106,7 +106,7 @@ def readTransactionsFromFile(filePath):
             continue
         else:
             raise ValueError(
-                "Error: Unknown transaction type '{}'\n  File {}, line {}".format(
+                "Error: Unknown transaction type '{}'\n  {}, line {}".format(
                     row[0], filePath, str(index + 3)
                 )
             )
@@ -125,13 +125,42 @@ def prepareCsvWriter(filePath):
     return csvWriter
 
 
-def isRegistration(transaction):
+def printErrorInTransaction(errorMessage, transaction):
+    print(
+        errorMessage + ":",
+        "  Message: '" + transaction[2] + "'",
+        "  Amount: " + toDecimalNumber(transaction[0]),
+        "  Date: " + transaction[1],
+        "",
+        sep="\n",
+    )
+
+
+def isRegistration(transaction, registrationFee):
     """Finds out if the transaction is part of a registration.
     
-    Searches for the substrings "tilmeld" and "indmeld" in the MP transaction comment.
+    Searches for the substrings "tilmeld" and "indmeld" in the MP transaction comment,
+    warns if so and in wrong format.
     """
 
-    return "tilmeld" in transaction[2].lower() or "indmeld" in transaction[2].lower()
+    isRegistration = False
+
+    if "tilmeld" in transaction[2].lower() or "indmeld" in transaction[2].lower():
+        isRegistration = True
+
+        if len(transaction[2].split()) != 2:  # Registration message in wrong format
+            printErrorInTransaction(
+                "Warning: Treated as registration message, edit infile if not",
+                transaction,
+            )
+
+        if int(transaction[0]) < registrationFee:  # Not enough money transferred
+            printErrorInTransaction(
+                "Warning: Not enough money transferred for registration, still treated as one",
+                transaction,
+            )
+
+    return isRegistration
 
 
 def calculateBatchInfo(batch, registrationFee=20000):
@@ -154,7 +183,7 @@ def calculateBatchInfo(batch, registrationFee=20000):
         mpFees += mpFee
         toBank += transAmount - mpFee
 
-        if isRegistration(transaction):
+        if isRegistration(transaction, registrationFee):
             registrationFees += registrationFee
             voucherAmount += transAmount - registrationFee
         else:
@@ -176,7 +205,7 @@ def nextBusinessDay(date):
 def toDecimalNumber(number):
     """Formats an amount of øre to kroner."""
 
-    return "{:.2f}".format(number / 100).replace(".", ",")
+    return "{:.2f}".format(int(number) / 100).replace(".", ",")
 
 
 def writeTransactions(filePath, appendixStart, transactionsByBatch):
@@ -250,6 +279,10 @@ def writeTransactions(filePath, appendixStart, transactionsByBatch):
 
 def main():
     """Reads a CSV by MP and writes a CSV recognizable by Dinero."""
+
+    format = (
+        "%(levelname)s\n%(message)s\n%(date)s: '%(mpMessage)s'\nAmount: %(amount)s\n"
+    )
 
     args = parseArgs()
     writePath = handleOutFile(args)
