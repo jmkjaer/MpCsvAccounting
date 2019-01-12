@@ -200,7 +200,9 @@ def writeTransactions(filePath, appendixStart, transactionsByBatch):
             [
                 currAppendix,
                 bankTransferDate,
-                "MP " + (str(batchDate.day) + "-" + str(batchDate.month)).zfill(5),
+                "MP fra {}-{}".format(
+                    str(batchDate.day).zfill(2), str(batchDate.month).zfill(2)
+                ),
                 Account.BANK,
                 toDecimalNumber(toBank),
                 None,
