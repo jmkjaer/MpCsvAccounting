@@ -10,7 +10,7 @@ The script is written in [Python 3](https://www.python.org/downloads/) and requi
 
 The script currently has a single dependency, [holidays](https://github.com/dr-prodigy/python-holidays). To install with pip, run
 ```bash
-python3 -m pip install --user holidays==0.9.8
+python3 -m pip install --user holidays==0.9.9
 ```
 or
 ```bash
