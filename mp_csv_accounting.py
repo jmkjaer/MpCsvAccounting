@@ -3,7 +3,6 @@
 import argparse
 import csv
 import datetime
-import locale
 import sys
 from pathlib import Path
 
@@ -176,7 +175,7 @@ def nextBusinessDay(date):
 def toDecimalNumber(number):
     """Formats an amount of øre to kroner."""
 
-    return locale.format_string("%.2f", number / 100)
+    return "{:.2f}".format(number / 100).replace(".", ",")
 
 
 def writeTransactions(filePath, appendixStart, transactionsByBatch):
@@ -189,7 +188,14 @@ def writeTransactions(filePath, appendixStart, transactionsByBatch):
     currAppendix = appendixStart
     csvWriter = prepareCsvWriter(filePath)
 
-    csvWriter.writerow(["Bilag nr.", "Dato", "Tekst", "Konto", "Beløb", "Modkonto"])
+    try:
+        csvWriter.writerow(
+            ["Bilag nr.", "Dato", "Tekst", "Konto", "Beløb", "Modkonto"]
+        )
+    except UnicodeEncodeError:
+        csvWriter.writerow(
+            ["Bilag nr.", "Dato", "Tekst", "Konto", "Beløb".encode("utf-8"), "Modkonto"]
+        )
 
     for batch in transactionsByBatch:
         toBank, mpFees, registrationFees, voucherAmount = calculateBatchInfo(batch)
@@ -244,13 +250,7 @@ def writeTransactions(filePath, appendixStart, transactionsByBatch):
 
 
 def main():
-    """Reads a CSV by MP and writes a CSV recognizable by Dinero.
-    
-    Note: The locale is set to be able to convert numbers as strings into Danish \
-    decimal numbers with comma as separator.
-    """
-
-    locale.setlocale(locale.LC_NUMERIC, "en_DK.UTF-8")
+    """Reads a CSV by MP and writes a CSV recognizable by Dinero."""
 
     args = parseArgs()
     writePath = handleOutFile(args)

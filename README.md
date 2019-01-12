@@ -5,10 +5,11 @@ This is a parser for MobilePay MyShop CSVs. It writes CSVs that Dinero accountin
 ## Prerequisites
 
 The script is written in [Python 3](https://www.python.org/downloads/) and requires it to be installed on the system.
+In addition, [Pip](https://github.com/pypa/pip) is needed for dependency installation.
 
 ## Installation
 
-The script currently has a single dependency, [holidays](https://github.com/dr-prodigy/python-holidays). To install with pip, run
+The script currently has a single high-level dependency, [holidays](https://github.com/dr-prodigy/python-holidays). To install with pip, run
 ```bash
 python3 -m pip install --user holidays==0.9.9
 ```
