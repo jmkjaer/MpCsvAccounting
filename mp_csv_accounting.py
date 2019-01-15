@@ -3,6 +3,7 @@
 import argparse
 import csv
 import datetime as dt
+import logging
 import sys
 from pathlib import Path
 
@@ -106,7 +107,7 @@ def readTransactionsFromFile(filePath):
             continue
         else:
             raise ValueError(
-                "Error: Unknown transaction type '{}'\n  File {}, line {}".format(
+                "Error: Unknown transaction type '{}'\n  {}, line {}".format(
                     row[0], filePath, str(index + 3)
                 )
             )
@@ -125,13 +126,44 @@ def prepareCsvWriter(filePath):
     return csvWriter
 
 
-def isRegistration(transaction):
+def isRegistration(transaction, registrationFee):
     """Finds out if the transaction is part of a registration.
     
-    Searches for the substrings "tilmeld" and "indmeld" in the MP transaction comment.
+    Searches for the substrings "tilmeld" and "indmeld" in the MP transaction comment,
+    warns if so, if in wrong format, and if amount is below transaction fee.
     """
 
-    return "tilmeld" in transaction[2].lower() or "indmeld" in transaction[2].lower()
+    isRegistration = False
+
+    if "tilmeld" in transaction[2].lower() or "indmeld" in transaction[2].lower():
+        isRegistration = True
+
+        wrongFormatMsg = (
+            "* Wrongly formatted registration message."
+            if len(transaction[2].split()) != 2
+            else ""
+        )
+        wrongAmountMsg = (
+            "\n  * Not enough money transferred for registration."
+            if int(transaction[0]) < registrationFee
+            else ""
+        )
+
+        if wrongFormatMsg or wrongAmountMsg:
+            logging.warning(  # This is terrible :(
+                "{} for transaction {}, DKK {} - '{}':\n"
+                "  {}{}"
+                "\nStill treated as registration, edit infile and run again if not.\n".format(
+                    "Two errors" if wrongFormatMsg and wrongAmountMsg else "One error",
+                    transaction[1],
+                    toDecimalNumber(transaction[0]),
+                    transaction[2],
+                    wrongFormatMsg,
+                    wrongAmountMsg,
+                )
+            )
+
+    return isRegistration
 
 
 def calculateBatchInfo(batch, registrationFee=20000):
@@ -154,7 +186,7 @@ def calculateBatchInfo(batch, registrationFee=20000):
         mpFees += mpFee
         toBank += transAmount - mpFee
 
-        if isRegistration(transaction):
+        if isRegistration(transaction, registrationFee):
             registrationFees += registrationFee
             voucherAmount += transAmount - registrationFee
         else:
@@ -176,7 +208,7 @@ def nextBusinessDay(date):
 def toDecimalNumber(number):
     """Formats an amount of øre to kroner."""
 
-    return "{:.2f}".format(number / 100).replace(".", ",")
+    return "{:.2f}".format(int(number) / 100).replace(".", ",")
 
 
 def writeTransactions(filePath, appendixStart, transactionsByBatch):
@@ -251,17 +283,20 @@ def writeTransactions(filePath, appendixStart, transactionsByBatch):
 def main():
     """Reads a CSV by MP and writes a CSV recognizable by Dinero."""
 
+    logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
+
     args = parseArgs()
     writePath = handleOutFile(args)
 
     try:
         transactionsByBatch = readTransactionsFromFile(args.infile)
     except ValueError as e:
-        print(e)
-        sys.exit()
+        logging.error(e)
+        sys.exit(1)
+
     writeTransactions(writePath, args.appendix_start, transactionsByBatch)
 
-    print("Done writing to " + writePath)
+    logging.info("Done writing to " + writePath)
 
 
 if __name__ == "__main__":
