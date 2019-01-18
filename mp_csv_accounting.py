@@ -9,6 +9,7 @@ from pathlib import Path
 
 import holidays
 from dateutil.easter import easter
+from fpdf import FPDF
 
 
 class DanishBankHolidays(holidays.DK):
@@ -92,7 +93,7 @@ def readTransactionsFromFile(filePath):
         mpFee = row[10].replace(",", "")
         if row[0] == "Salg":
             # Amount, date, message, MP fee
-            transactions.append((transferAmount, row[6], row[9], mpFee))
+            transactions.append((transferAmount, row[6], row[9], mpFee, row[7]))
             continue
         elif row[0] == "Refundering":
             transactions.append(("-" + transferAmount, row[6], row[9], mpFee))
@@ -211,7 +212,7 @@ def toDecimalNumber(number):
     return "{:.2f}".format(int(number) / 100).replace(".", ",")
 
 
-def writeTransactions(filePath, appendixStart, transactionsByBatch):
+def writeCsv(filePath, appendixStart, transactionsByBatch):
     """Writes the information gathered throughout the script to a CSV file.
     
     The resulting CSV file is recognized by Dinero's journal entry CSV import. \
@@ -280,6 +281,55 @@ def writeTransactions(filePath, appendixStart, transactionsByBatch):
         currAppendix += 1
 
 
+def writePdf(transactionsBatch, writePath):
+    """Writes information from a day's worth of MP transactions to a PDF."""
+
+    pdf = FPDF()
+    pdf.add_page()
+
+    pdf.set_font("Arial", "B", 16.0)
+    colWidths = [11, 82, 25, 20, 26, 25]
+    pdf.ln(5)
+    pdf.cell(157, 25.0, "Indbetalinger til Stregsystemet via MobilePay", align="L")
+    pdf.image("f-klubben.jpg", w=30)
+    pdf.ln(1)
+
+    pdf.set_font("Arial", "", 10.0)
+    pdf.cell(0, -10, "18-01-2019", align="L")
+    pdf.set_font("Arial", "", 10.0)
+
+    pdf.ln(4 * pdf.font_size)
+
+    header = [
+        ("Kl.", "R"),
+        ("Besked", "L"),
+        ("Tilm.gebyr, kr.", "R"),
+        ("Overf., kr.", "R"),
+        ("MP-gebyr, kr.", "R"),
+        ("Gavekort, kr.", "R"),
+    ]
+
+    for i, col in enumerate(header):
+        pdf.cell(colWidths[i], 1.5 * pdf.font_size, col[0], border="B", align=col[1])
+
+    pdf.ln(2 * pdf.font_size)
+
+    for transaction in transactionsBatch:
+        pdf.cell(colWidths[0], 2 * pdf.font_size, str(transaction[4]), align="R")
+        pdf.cell(colWidths[1], 2 * pdf.font_size, transaction[2][:49], align="L")
+        pdf.cell(colWidths[2], 2 * pdf.font_size, "", align="R")
+        pdf.cell(
+            colWidths[3], 2 * pdf.font_size, toDecimalNumber(transaction[0]), align="R"
+        )
+        pdf.cell(
+            colWidths[4], 2 * pdf.font_size, toDecimalNumber(transaction[3]), align="R"
+        )
+        pdf.cell(colWidths[5], 2 * pdf.font_size, "", align="R")
+        pdf.ln(2 * pdf.font_size)
+
+    pdf.output(transactionsBatch[0][1] + ".pdf")
+
+
 def main():
     """Reads a CSV by MP and writes a CSV recognizable by Dinero."""
 
@@ -294,7 +344,10 @@ def main():
         logging.error(e)
         sys.exit(1)
 
-    writeTransactions(writePath, args.appendix_start, transactionsByBatch)
+    writeCsv(writePath, args.appendix_start, transactionsByBatch)
+
+    for batch in transactionsByBatch:
+        writePdf(batch, writePath)
 
     logging.info("Done writing to " + writePath)
 

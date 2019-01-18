@@ -9,11 +9,7 @@ In addition, [Pip](https://github.com/pypa/pip) is needed for dependency install
 
 ## Installation
 
-The script currently has a single high-level dependency, [holidays](https://github.com/dr-prodigy/python-holidays). To install with pip, run
-```bash
-python3 -m pip install --user holidays==0.9.9
-```
-or
+The script currently has two high-level dependencies, [holidays](https://github.com/dr-prodigy/python-holidays), and [fpdf](https://github.com/reingart/pyfpdf). To install with pip, run
 ```bash
 python3 -m pip install --user -r requirements.txt
 ```
