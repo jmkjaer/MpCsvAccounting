@@ -284,13 +284,13 @@ def writeCsv(filePath, appendixStart, transactionsByBatch):
         currAppendix += 1
 
 
-def handlePdfFilename(initFilename):
+def handlePdfFilename(directory, initFilename):
     """Appends letter to new filename if file already exists (e.g. 01-11-2018a.pdf)."""
 
     i = "a"
-    outName = initFilename + ".pdf"
+    outName = directory + "/" + initFilename + ".pdf"
     while Path(outName).is_file():
-        outName = "{}{}.pdf".format(initFilename, i)
+        outName = "{}/{}{}.pdf".format(directory, initFilename, i)
         i = chr(ord(i) + 1)
 
     return outName
@@ -346,7 +346,7 @@ def writePdf(transactionsBatch, directory):
         pdf.cell(colWidths[5], 2 * pdf.font_size, "", align="R")
         pdf.ln(2 * pdf.font_size)
 
-    pdf.output(directory + "/" + handlePdfFilename(toBankDate))
+    pdf.output(handlePdfFilename(directory, toBankDate))
 
 
 def main():
