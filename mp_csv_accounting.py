@@ -51,10 +51,13 @@ def parseArgs():
         metavar="FILE",
         help="write output to file (default: out.csv)",
     )
+    parser.add_argument("-n", "--no-pdf", help="don't create PDFs", action="store_true")
     return parser.parse_args()
 
 
 def handleOutFile(args):
+    """If output filename is specified, create dir if applicable, and set writepath."""
+
     if args.outfile:
         writePath = args.outfile
         if Path(args.outfile).parent:
@@ -281,23 +284,38 @@ def writeCsv(filePath, appendixStart, transactionsByBatch):
         currAppendix += 1
 
 
-def writePdf(transactionsBatch, writePath):
+def handlePdfFilename(initFilename):
+    """Appends letter to new filename if file already exists (e.g. 01-11-2018a.pdf)."""
+
+    i = "a"
+    outName = initFilename + ".pdf"
+    while Path(outName).is_file():
+        outName = "{}{}.pdf".format(initFilename, i)
+        i = chr(ord(i) + 1)
+
+    return outName
+
+
+def writePdf(transactionsBatch, directory):
     """Writes information from a day's worth of MP transactions to a PDF."""
+
+    transferDateString = transactionsBatch[0][1]
+    toBankDate = nextBusinessDay(dt.datetime.strptime(transferDateString, "%d-%m-%Y"))
 
     pdf = FPDF()
     pdf.add_page()
 
     pdf.set_font("Arial", "B", 16.0)
-    colWidths = [11, 82, 25, 20, 26, 25]
     pdf.ln(5)
-    pdf.cell(157, 25.0, "Indbetalinger til Stregsystemet via MobilePay", align="L")
-    pdf.image("f-klubben.jpg", w=30)
+    pdf.cell(157, 25.0, "Indbetalinger til Stregsystemet via MobilePay")
+    pdf.image("images/f-klubben.jpg", w=30)
     pdf.ln(1)
 
     pdf.set_font("Arial", "", 10.0)
-    pdf.cell(0, -10, "18-01-2019", align="L")
-    pdf.set_font("Arial", "", 10.0)
+    pdf.cell(0, -10, "Dato: " + toBankDate)
+    pdf.ln(1.5 * pdf.font_size)
 
+    pdf.cell(0, -10, "Overførsler fra " + transferDateString)
     pdf.ln(4 * pdf.font_size)
 
     header = [
@@ -308,6 +326,7 @@ def writePdf(transactionsBatch, writePath):
         ("MP-gebyr, kr.", "R"),
         ("Gavekort, kr.", "R"),
     ]
+    colWidths = [11, 82, 25, 20, 26, 25]  # Seems to work well with A4
 
     for i, col in enumerate(header):
         pdf.cell(colWidths[i], 1.5 * pdf.font_size, col[0], border="B", align=col[1])
@@ -327,7 +346,7 @@ def writePdf(transactionsBatch, writePath):
         pdf.cell(colWidths[5], 2 * pdf.font_size, "", align="R")
         pdf.ln(2 * pdf.font_size)
 
-    pdf.output(transactionsBatch[0][1] + ".pdf")
+    pdf.output(directory + "/" + handlePdfFilename(toBankDate))
 
 
 def main():
@@ -345,11 +364,16 @@ def main():
         sys.exit(1)
 
     writeCsv(writePath, args.appendix_start, transactionsByBatch)
+    logging.info("Done writing CSV to " + writePath)
 
-    for batch in transactionsByBatch:
-        writePdf(batch, writePath)
+    if not args.no_pdf:
+        outdir = "pdfs"  # This is just temporary
+        Path(outdir).mkdir(parents=True, exist_ok=True)
 
-    logging.info("Done writing to " + writePath)
+        for batch in transactionsByBatch:
+            writePdf(batch, outdir)
+
+        logging.info("Done writing PDFs to " + outdir + "/")
 
 
 if __name__ == "__main__":
