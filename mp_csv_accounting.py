@@ -26,6 +26,8 @@ class DanishBankHolidays(holidays.DK):
 
 
 class Transaction:
+    """A transaction with relevant information."""
+
     SALG = "Salg"
     REFUNDERING = "Refundering"
     REGISTRATION_FEE = 20000
@@ -43,6 +45,11 @@ class Transaction:
         self.message = message
         self.mpFee = int(mpFee.replace(",", ""))
         self.isRegistration = self.checkRegistration(Transaction.REGISTRATION_FEE)
+
+        if not self.isRegistration:
+            self.voucherAmount = self.amount
+        else:
+            self.voucherAmount = self.amount - Transaction.REGISTRATION_FEE
 
     def checkRegistration(self, registrationFee):
         """Finds out if the transaction is part of a registration.
@@ -87,6 +94,8 @@ class Transaction:
 
 
 class TransactionBatch:
+    """A day's worth of transactions."""
+
     def __init__(self):
         self.transactions = []
         self.totalAmount = 0
@@ -99,21 +108,26 @@ class TransactionBatch:
         self.bankTransferDate = None
 
     def add_transaction(self, transaction):
+        """Adds a transaction, and updates instance variables accordingly."""
+
         self.transactions.append(transaction)
         self.totalAmount += transaction.amount
+        self.voucherAmount += transaction.voucherAmount
         self.mpFees += transaction.mpFee
 
         if transaction.isRegistration:
+            transaction.registrationFee = Transaction.REGISTRATION_FEE
             self.registrations += 1
-            self.registrationFees += Transaction.REGISTRATION_FEE
-            self.voucherAmount += transaction.amount - Transaction.REGISTRATION_FEE
-        else:
-            self.voucherAmount += transaction.amount
+            self.registrationFees += transaction.registrationFee
 
     def isActive(self):
+        """Does the batch currently have any transactions?"""
+
         return len(self.transactions) > 0
 
     def commit(self):
+        """Sets the relevant dates, calculates the amount of money for the bank."""
+
         self.transferDate = self.transactions[0].date
         self.bankTransferDate = nextBusinessDay(self.transferDate)
         self.toBank = self.totalAmount - self.mpFees
@@ -236,6 +250,7 @@ def prepareCsvWriter(filePath):
 
 
 def toDanishDateFormat(date):
+    """Converts a yyyy-MM-dd date to dd-MM-yyyy as a string."""
     return date.strftime("%d-%m-%Y")
 
 
@@ -315,7 +330,11 @@ def handlePdfFilename(directory, initFilename):
 
 
 def writePdf(transactionsBatch, directory):
-    """Writes information from a day's worth of MP transactions to a PDF."""
+    """Writes information from a day's worth of MP transactions to a PDF.
+
+    Each piece of information is a cell with borders instead of the whole thing being
+    a table.
+    """
 
     pdf = FPDF()
     pdf.add_page()
@@ -351,6 +370,11 @@ def writePdf(transactionsBatch, directory):
     pdf.ln(2 * pdf.font_size)
 
     for transaction in transactionsBatch.transactions:
+        if transaction.type == Transaction.SALG:
+            pdf.set_text_color(0, 0, 0)
+        else:
+            pdf.set_text_color(220, 0, 0)
+
         pdf.cell(
             colWidths[0],
             2 * pdf.font_size,
@@ -358,7 +382,14 @@ def writePdf(transactionsBatch, directory):
             align="R",
         )
         pdf.cell(colWidths[1], 2 * pdf.font_size, transaction.message[:49], align="L")
-        pdf.cell(colWidths[2], 2 * pdf.font_size, "", align="R")
+        pdf.cell(
+            colWidths[2],
+            2 * pdf.font_size,
+            toDecimalNumber(Transaction.REGISTRATION_FEE)
+            if transaction.isRegistration
+            else "",
+            align="R",
+        )
         pdf.cell(
             colWidths[3],
             2 * pdf.font_size,
@@ -371,14 +402,15 @@ def writePdf(transactionsBatch, directory):
             toDecimalNumber(transaction.mpFee),
             align="R",
         )
-        pdf.cell(colWidths[5], 2 * pdf.font_size, "", align="R")
+        pdf.cell(
+            colWidths[5],
+            2 * pdf.font_size,
+            toDecimalNumber(transaction.voucherAmount),
+            align="R",
+        )
         pdf.ln(2 * pdf.font_size)
 
-    pdf.output(
-        handlePdfFilename(
-            directory, toDanishDateFormat(transactionsBatch.bankTransferDate)
-        )
-    )
+    pdf.output(handlePdfFilename(directory, str(transactionsBatch.bankTransferDate)))
 
 
 def main():
@@ -399,7 +431,7 @@ def main():
     logging.info("Done writing CSV to " + writePath)
 
     if not args.no_pdf:
-        outdir = "pdfs"  # This is just temporary
+        outdir = "pdf"  # This is just temporary
         Path(outdir).mkdir(parents=True, exist_ok=True)
 
         for batch in transactionBatches:
