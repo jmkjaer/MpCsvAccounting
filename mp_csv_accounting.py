@@ -12,24 +12,17 @@ from dateutil.easter import easter
 from fpdf import FPDF
 
 
-def toDanishDateFormat(date):
-    return date.strftime("%d-%m-%Y")
+class DanishBankHolidays(holidays.DK):
+    """Bank holidays in Denmark in addition to normal holidays."""
 
-
-def toDecimalNumber(number):
-    """Formats an amount of øre to kroner."""
-
-    return "{:.2f}".format(int(number) / 100).replace(".", ",")
-
-
-def nextBusinessDay(date):
-    """Returns the next business day for bank transfer in dd-mm-yyyy format."""
-
-    nextDay = date + dt.timedelta(days=1)
-    while nextDay.weekday() in holidays.WEEKEND or nextDay in DANISH_BANK_HOLIDAYS:
-        nextDay += dt.timedelta(days=1)
-
-    return nextDay
+    def _populate(self, year):
+        holidays.DK._populate(self, year)
+        self[
+            easter(year) + dt.timedelta(days=40)  # Day after Ascension Day
+        ] = "Banklukkedag"
+        self[dt.date(year, 6, 5)] = "Banklukkedag"  # Danish Constitution Day
+        self[dt.date(year, 12, 24)] = "Banklukkedag"  # Christmas Eve
+        self[dt.date(year, 12, 31)] = "Banklukkedag"  # New Year's Eve
 
 
 class Transaction:
@@ -50,15 +43,6 @@ class Transaction:
         self.message = message
         self.mpFee = int(mpFee.replace(",", ""))
         self.isRegistration = self.checkRegistration(Transaction.REGISTRATION_FEE)
-
-    def __repr__(self):
-        return "{} {}, {} DKK {}, registration: {}".format(
-            self.date,
-            self.time,
-            self.type,
-            toDecimalNumber(self.amount).rjust(6),
-            self.isRegistration,
-        )
 
     def checkRegistration(self, registrationFee):
         """Finds out if the transaction is part of a registration.
@@ -92,8 +76,7 @@ class Transaction:
                         if wrongFormatMsg and wrongAmountMsg
                         else "One error",
                         self.date,
-                        # toDecimalNumber(self.amount),
-                        self.amount / 100,
+                        toDecimalNumber(self.amount),
                         self.message,
                         wrongFormatMsg,
                         wrongAmountMsg,
@@ -107,7 +90,7 @@ class TransactionBatch:
     def __init__(self):
         self.transactions = []
         self.totalAmount = 0
-        self.date = None
+        self.transferDate = None
         self.mpFees = 0
         self.registrationFees = 0
         self.registrations = 0
@@ -131,35 +114,9 @@ class TransactionBatch:
         return len(self.transactions) > 0
 
     def commit(self):
-        self.date = self.transactions[0].date
-        self.bankTransferDate = nextBusinessDay(self.date)
+        self.transferDate = self.transactions[0].date
+        self.bankTransferDate = nextBusinessDay(self.transferDate)
         self.toBank = self.totalAmount - self.mpFees
-
-    def __repr__(self):
-        return "Date: {} ({})\n{} transactions\nTotal: {}\nFees: {}\nRegistrations: {}\nRegistration fees: {}\nVoucher amount: {}\nTo bank: {}".format(
-            self.date,
-            self.bankTransferDate,
-            len(self.transactions),
-            toDecimalNumber(self.totalAmount),
-            toDecimalNumber(self.mpFees),
-            self.registrations,
-            toDecimalNumber(self.registrationFees),
-            toDecimalNumber(self.voucherAmount),
-            toDecimalNumber(self.toBank),
-        )
-
-
-class DanishBankHolidays(holidays.DK):
-    """Bank holidays in Denmark in addition to normal holidays."""
-
-    def _populate(self, year):
-        holidays.DK._populate(self, year)
-        self[
-            easter(year) + dt.timedelta(days=40)  # Day after Ascension Day
-        ] = "Banklukkedag"
-        self[dt.date(year, 6, 5)] = "Banklukkedag"  # Danish Constitution Day
-        self[dt.date(year, 12, 24)] = "Banklukkedag"  # Christmas Eve
-        self[dt.date(year, 12, 31)] = "Banklukkedag"  # New Year's Eve
 
 
 class Account:
@@ -172,6 +129,22 @@ class Account:
 
 
 DANISH_BANK_HOLIDAYS = DanishBankHolidays()
+
+
+def toDecimalNumber(number):
+    """Formats an amount of øre to kroner."""
+
+    return "{:.2f}".format(int(number) / 100).replace(".", ",")
+
+
+def nextBusinessDay(date):
+    """Returns the next business day for bank transfer in dd-mm-yyyy format."""
+
+    nextDay = date + dt.timedelta(days=1)
+    while nextDay.weekday() in holidays.WEEKEND or nextDay in DANISH_BANK_HOLIDAYS:
+        nextDay += dt.timedelta(days=1)
+
+    return nextDay
 
 
 def parseArgs():
@@ -228,7 +201,7 @@ def readTransactionsFromFile(filePath):
     currentBatch = TransactionBatch()
 
     for index, row in enumerate(reader):
-        if row[0] == "Salg" or row[0] == "Refundering":
+        if row[0] == Transaction.SALG or row[0] == Transaction.REFUNDERING:
             currentBatch.add_transaction(
                 Transaction(row[0], row[3], row[6], row[7], row[9], row[10])
             )
@@ -262,6 +235,10 @@ def prepareCsvWriter(filePath):
     return csvWriter
 
 
+def toDanishDateFormat(date):
+    return date.strftime("%d-%m-%Y")
+
+
 def writeCsv(filePath, appendixStart, transactionsByBatch):
     """Writes the information gathered throughout the script to a CSV file.
     
@@ -284,7 +261,7 @@ def writeCsv(filePath, appendixStart, transactionsByBatch):
             [
                 currAppendix,
                 toDanishDateFormat(batch.bankTransferDate),
-                "MP fra {}".format(batch.date.strftime("%d-%m")),
+                "MP fra " + batch.transferDate.strftime("%d-%m"),
                 Account.BANK,
                 toDecimalNumber(batch.toBank),
                 None,
@@ -340,9 +317,6 @@ def handlePdfFilename(directory, initFilename):
 def writePdf(transactionsBatch, directory):
     """Writes information from a day's worth of MP transactions to a PDF."""
 
-    transferDateString = transactionsBatch[0][1]
-    toBankDate = nextBusinessDay(dt.datetime.strptime(transferDateString, "%d-%m-%Y"))
-
     pdf = FPDF()
     pdf.add_page()
 
@@ -353,10 +327,12 @@ def writePdf(transactionsBatch, directory):
     pdf.ln(1)
 
     pdf.set_font("Arial", "", 10.0)
-    pdf.cell(0, -10, "Dato: " + toBankDate)
+    pdf.cell(0, -10, "Dato: " + toDanishDateFormat(transactionsBatch.bankTransferDate))
     pdf.ln(1.5 * pdf.font_size)
 
-    pdf.cell(0, -10, "Overførsler fra " + transferDateString)
+    pdf.cell(
+        0, -10, "Overførsler fra " + toDanishDateFormat(transactionsBatch.transferDate)
+    )
     pdf.ln(4 * pdf.font_size)
 
     header = [
@@ -374,60 +350,62 @@ def writePdf(transactionsBatch, directory):
 
     pdf.ln(2 * pdf.font_size)
 
-    for transaction in transactionsBatch:
-        pdf.cell(colWidths[0], 2 * pdf.font_size, str(transaction[4]), align="R")
-        pdf.cell(colWidths[1], 2 * pdf.font_size, transaction[2][:49], align="L")
+    for transaction in transactionsBatch.transactions:
+        pdf.cell(
+            colWidths[0],
+            2 * pdf.font_size,
+            str(transaction.time.strftime("%H:%M")),
+            align="R",
+        )
+        pdf.cell(colWidths[1], 2 * pdf.font_size, transaction.message[:49], align="L")
         pdf.cell(colWidths[2], 2 * pdf.font_size, "", align="R")
         pdf.cell(
             colWidths[3],
             2 * pdf.font_size,
-            toDecimalNumber(transaction[0]),
+            toDecimalNumber(transaction.amount),
             align="R",
         )
         pdf.cell(
             colWidths[4],
             2 * pdf.font_size,
-            toDecimalNumber(transaction[3]),
+            toDecimalNumber(transaction.mpFee),
             align="R",
         )
         pdf.cell(colWidths[5], 2 * pdf.font_size, "", align="R")
         pdf.ln(2 * pdf.font_size)
 
-    pdf.output(handlePdfFilename(directory, toBankDate))
+    pdf.output(
+        handlePdfFilename(
+            directory, toDanishDateFormat(transactionsBatch.bankTransferDate)
+        )
+    )
 
 
 def main():
     """Reads a CSV by MP and writes a CSV recognizable by Dinero."""
 
-    logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
+    logging.basicConfig(level=logging.DEBUG, format="%(levelname)s: %(message)s")
 
     args = parseArgs()
     writePath = handleOutFile(args)
 
     try:
         transactionBatches = readTransactionsFromFile(args.infile)
-        print()
-        for x in transactionBatches:
-            print(x)
-            print()
-            for y in x.transactions:
-                print(y)
-            print()
     except ValueError as e:
         logging.error(e)
         sys.exit(1)
 
     writeCsv(writePath, args.appendix_start, transactionBatches)
-    # logging.info("Done writing CSV to " + writePath)
+    logging.info("Done writing CSV to " + writePath)
 
-    # if not args.no_pdf:
-    #     outdir = "pdfs"  # This is just temporary
-    #     Path(outdir).mkdir(parents=True, exist_ok=True)
+    if not args.no_pdf:
+        outdir = "pdfs"  # This is just temporary
+        Path(outdir).mkdir(parents=True, exist_ok=True)
 
-    #     for batch in transactionBatches:
-    #         writePdf(batch, outdir)
+        for batch in transactionBatches:
+            writePdf(batch, outdir)
 
-    #     logging.info("Done writing PDFs to " + outdir + "/")
+        logging.info("Done writing PDFs to " + outdir + "/")
 
 
 if __name__ == "__main__":
