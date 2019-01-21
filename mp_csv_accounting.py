@@ -12,6 +12,64 @@ from dateutil.easter import easter
 from fpdf import FPDF
 
 
+class Transaction:
+    SALG = "Salg"
+    REFUNDERING = "Refundering"
+
+    def __init__(self, type, amount, date, time, transId, message, mpFee):
+        self.type = type
+
+        if type == Transaction.SALG:
+            self.amount = int(amount.replace(",", "").replace(".", ""))
+        else:
+            self.amount = -int(amount.replace(",", "").replace(".", ""))
+
+        self.date = dt.datetime.strptime(date, "%d-%m-%Y").date()
+        self.time = dt.datetime.strptime(time, "%H:%M").time()
+        self.transId = transId
+        self.message = message
+        self.mpFee = int(mpFee.replace(",", ""))
+
+    def __eq__(self, other):
+        return self.transId == other.transId
+
+    def __repr__(self):
+        return "{} {}, {} DKK {}".format(
+            self.date, self.time, self.type.ljust(12), str(self.amount / 100).rjust(6)
+        )
+
+
+class TransactionBatch:
+    def __init__(self):
+        self.transactions = []
+        self.totalAmount = 0
+        self.date = None
+        self.mpFees = 0
+
+    def add_transaction(self, transaction):
+        print(transaction)
+        self.transactions.append(transaction)
+
+        if transaction.type == Transaction.REFUNDERING:
+            self.totalAmount -= transaction.amount
+        else:
+            self.mpFees += transaction.mpFee
+
+        # self.date = transaction.date
+        self.mpFees += transaction.mpFee
+
+    def isActive(self):
+        return len(self.transactions) > 0
+
+    def __repr__(self):
+        return "{} transactions\nTotal: DKK {}\nFees:  DKK {}\n".format(
+            len(self.transactions), self.totalAmount / 100, self.mpFees / 100
+        )
+
+    def __str__(self):
+        return self.__repr__()
+
+
 class DanishBankHolidays(holidays.DK):
     """Bank holidays in Denmark in addition to normal holidays."""
 
@@ -87,39 +145,59 @@ def readTransactionsFromFile(filePath):
     """
 
     reader = prepareCsvReader(filePath)
-    transactions = []
-    transactionsByBatch = []
+    transactionBatches = []
+    currentBatch = TransactionBatch()
+
+    # for index, row in enumerate(reader):
+    #     # Parse as øre (1/100th krone) instead of kroner
+    #     transferAmount = row[3].replace(",", "").replace(".", "")
+    #     mpFee = row[10].replace(",", "")
+    #     if row[0] == "Salg":
+    #         # Amount, date, message, MP fee
+    #         # transactions.append((transferAmount, row[6], row[9], mpFee, row[7]))
+    #         transactions.append(Transaction())
+    #         continue
+    #     elif row[0] == "Refundering":
+    #         transactions.append(("-" + transferAmount, row[6], row[9], mpFee))
+    #         continue
+    #     elif row[0] == "Overførsel":
+    #         # The imported CSV starts with a "Gebyr" and an "Overførsel"
+    #         if transactions:
+    #             transactionsByBatch.append(transactions)
+    #             transactions = []
+    #         continue
+    #     elif row[0] == "Gebyr":
+    #         continue
+    #     else:
+    #         raise ValueError(
+    #             "Error: Unknown transaction type '{}'\n  {}, line {}".format(
+    #                 row[0], filePath, str(index + 3)
+    #             )
+    #         )
 
     for index, row in enumerate(reader):
-        # Parse as øre (1/100th krone) instead of kroner
-        transferAmount = row[3].replace(",", "").replace(".", "")
-        mpFee = row[10].replace(",", "")
-        if row[0] == "Salg":
-            # Amount, date, message, MP fee
-            transactions.append((transferAmount, row[6], row[9], mpFee, row[7]))
-            continue
-        elif row[0] == "Refundering":
-            transactions.append(("-" + transferAmount, row[6], row[9], mpFee))
-            continue
+        if row[0] == "Salg" or row[0] == "Refundering":
+            currentBatch.add_transaction(
+                Transaction(row[0], row[3], row[6], row[7], row[8], row[9], row[10])
+            )
         elif row[0] == "Overførsel":
-            # The imported CSV starts with a "Gebyr" and an "Overførsel"
-            if transactions:
-                transactionsByBatch.append(transactions)
-                transactions = []
-            continue
+            if currentBatch.isActive():
+                transactionBatches.append(currentBatch)
+                currentBatch = TransactionBatch()
         elif row[0] == "Gebyr":
             continue
         else:
             raise ValueError(
-                "Error: Unknown transaction type '{}'\n  {}, line {}".format(
+                "Unknown transaction type '{}', {}, line {}".format(
                     row[0], filePath, str(index + 3)
                 )
             )
-    # The imported CSV possibly ends with a batch of sales with no "Overførsel"
-    if transactions:
-        transactionsByBatch.append(transactions)
 
-    return transactionsByBatch
+    # The imported CSV possibly ends with a batch of sales with no "Overførsel"
+    if currentBatch.isActive():
+        transactionBatches.append(currentBatch)
+
+    return transactionBatches
 
 
 def prepareCsvWriter(filePath):
@@ -355,25 +433,27 @@ def main():
     logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
 
     args = parseArgs()
-    writePath = handleOutFile(args)
+    # writePath = handleOutFile(args)
 
     try:
-        transactionsByBatch = readTransactionsFromFile(args.infile)
+        transactionBatches = readTransactionsFromFile(args.infile)
+        # for batch in transactionBatches:
+        #     print(batch)
     except ValueError as e:
         logging.error(e)
         sys.exit(1)
 
-    writeCsv(writePath, args.appendix_start, transactionsByBatch)
-    logging.info("Done writing CSV to " + writePath)
+    # writeCsv(writePath, args.appendix_start, transactionBatches)
+    # logging.info("Done writing CSV to " + writePath)
 
-    if not args.no_pdf:
-        outdir = "pdfs"  # This is just temporary
-        Path(outdir).mkdir(parents=True, exist_ok=True)
+    # if not args.no_pdf:
+    #     outdir = "pdfs"  # This is just temporary
+    #     Path(outdir).mkdir(parents=True, exist_ok=True)
 
-        for batch in transactionsByBatch:
-            writePdf(batch, outdir)
+    #     for batch in transactionBatches:
+    #         writePdf(batch, outdir)
 
-        logging.info("Done writing PDFs to " + outdir + "/")
+    #     logging.info("Done writing PDFs to " + outdir + "/")
 
 
 if __name__ == "__main__":
