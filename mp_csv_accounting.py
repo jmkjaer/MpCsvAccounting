@@ -9,6 +9,7 @@ from pathlib import Path
 
 import holidays
 from dateutil.easter import easter
+from fpdf import FPDF
 
 
 class DanishBankHolidays(holidays.DK):
@@ -24,6 +25,127 @@ class DanishBankHolidays(holidays.DK):
         self[dt.date(year, 12, 31)] = "Banklukkedag"  # New Year's Eve
 
 
+class Transaction:
+    """A transaction with relevant information."""
+
+    SALG = "Salg"
+    REFUNDERING = "Refundering"
+    REGISTRATION_FEE = 20000
+
+    def __init__(self, type, amount, date, time, message, mpFee):
+        self.type = type
+
+        if type == Transaction.SALG:
+            self.amount = int(amount.replace(",", "").replace(".", ""))
+        else:
+            self.amount = -int(amount.replace(",", "").replace(".", ""))
+
+        self.date = dt.datetime.strptime(date, "%d-%m-%Y").date()
+        self.time = dt.datetime.strptime(time, "%H:%M").time()
+        self.message = message
+        self.mpFee = int(mpFee.replace(",", ""))
+        self.isRegistration = self.checkRegistration(Transaction.REGISTRATION_FEE)
+
+        if not self.isRegistration:
+            self.voucherAmount = self.amount
+        else:
+            self.voucherAmount = self.amount - Transaction.REGISTRATION_FEE
+
+    def checkRegistration(self, registrationFee):
+        """Finds out if the transaction is part of a registration.
+        
+        Searches for the substrings "tilmeld" and "indmeld" in the MP transaction comment,
+        warns if so, if in wrong format, and if amount is below transaction fee.
+        """
+
+        isRegistration = False
+
+        if "tilmeld" in self.message.lower() or "indmeld" in self.message.lower():
+            isRegistration = True
+
+            wrongFormatMsg = (
+                "* Wrongly formatted registration message."
+                if len(self.message.split()) != 2
+                else ""
+            )
+            wrongAmountMsg = (
+                "\n  * Not enough money transferred for registration."
+                if int(self.amount) < registrationFee
+                else ""
+            )
+
+            if wrongFormatMsg or wrongAmountMsg:
+                logging.warning(  # This is terrible :(
+                    "{} for transaction {}, DKK {} - '{}':\n"
+                    "  {}{}"
+                    "\nStill treated as registration, edit infile and run again if not.\n".format(
+                        "Two errors"
+                        if wrongFormatMsg and wrongAmountMsg
+                        else "One error",
+                        self.date,
+                        toDecimalNumber(self.amount),
+                        self.message,
+                        wrongFormatMsg,
+                        wrongAmountMsg,
+                    )
+                )
+
+        return isRegistration
+
+
+class TransactionBatch:
+    """A day's worth of transactions."""
+
+    def __init__(self):
+        self.transactions = []
+        self.totalAmount = 0
+        self.transferDate = None
+        self.mpFees = 0
+        self.registrationFees = 0
+        self.registrations = 0
+        self.voucherAmount = 0
+        self.toBank = 0
+        self.bankTransferDate = None
+        self.isCommitted = False
+
+    def add_transaction(self, transaction):
+        """Adds a transaction, and updates instance variables accordingly."""
+
+        self.transactions.append(transaction)
+        self.totalAmount += transaction.amount
+        self.voucherAmount += transaction.voucherAmount
+        self.mpFees += transaction.mpFee
+
+        if transaction.isRegistration:
+            transaction.registrationFee = Transaction.REGISTRATION_FEE
+            self.registrations += 1
+            self.registrationFees += transaction.registrationFee
+
+    def isActive(self):
+        """Does the batch currently have any transactions?"""
+
+        return len(self.transactions) > 0
+
+    def commit(self):
+        """Sets the relevant dates, calculates the amount of money for the bank."""
+
+        self.transferDate = self.transactions[0].date
+        self.bankTransferDate = nextBusinessDay(self.transferDate)
+        self.toBank = self.totalAmount - self.mpFees
+        self.isCommitted = True
+
+    def getTransactionsByType(self, type):
+        """Returns all transactions of specific type.
+
+        Type is either Transaction.SALG or Transaction.REFUNDERING.
+        """
+
+        if not self.isCommitted:
+            raise UserWarning("Transaction batch is not committed yet.")
+
+        return [t for t in self.transactions if t.type == type]
+
+
 class Account:
     """String constants for Dinero's accounts."""
 
@@ -34,6 +156,22 @@ class Account:
 
 
 DANISH_BANK_HOLIDAYS = DanishBankHolidays()
+
+
+def toDecimalNumber(number):
+    """Formats an amount of øre to kroner."""
+
+    return "{:.2f}".format(int(number) / 100).replace(".", ",")
+
+
+def nextBusinessDay(date):
+    """Returns the next business day for bank transfer in dd-mm-yyyy format."""
+
+    nextDay = date + dt.timedelta(days=1)
+    while nextDay.weekday() in holidays.WEEKEND or nextDay in DANISH_BANK_HOLIDAYS:
+        nextDay += dt.timedelta(days=1)
+
+    return nextDay
 
 
 def parseArgs():
@@ -50,10 +188,13 @@ def parseArgs():
         metavar="FILE",
         help="write output to file (default: out.csv)",
     )
+    parser.add_argument("-n", "--no-pdf", help="don't create PDFs", action="store_true")
     return parser.parse_args()
 
 
 def handleOutFile(args):
+    """If output filename is specified, create dir if applicable, and set writepath."""
+
     if args.outfile:
         writePath = args.outfile
         if Path(args.outfile).parent:
@@ -83,39 +224,34 @@ def readTransactionsFromFile(filePath):
     """
 
     reader = prepareCsvReader(filePath)
-    transactions = []
-    transactionsByBatch = []
+    transactionBatches = []
+    currentBatch = TransactionBatch()
 
     for index, row in enumerate(reader):
-        # Parse as øre (1/100th krone) instead of kroner
-        transferAmount = row[3].replace(",", "").replace(".", "")
-        mpFee = row[10].replace(",", "")
-        if row[0] == "Salg":
-            # Amount, date, message, MP fee
-            transactions.append((transferAmount, row[6], row[9], mpFee))
-            continue
-        elif row[0] == "Refundering":
-            transactions.append(("-" + transferAmount, row[6], row[9], mpFee))
-            continue
+        if row[0] == Transaction.SALG or row[0] == Transaction.REFUNDERING:
+            currentBatch.add_transaction(
+                Transaction(row[0], row[3], row[6], row[7], row[9], row[10])
+            )
         elif row[0] == "Overførsel":
-            # The imported CSV starts with a "Gebyr" and an "Overførsel"
-            if transactions:
-                transactionsByBatch.append(transactions)
-                transactions = []
-            continue
+            if currentBatch.isActive():
+                currentBatch.commit()
+                transactionBatches.append(currentBatch)
+                currentBatch = TransactionBatch()
         elif row[0] == "Gebyr":
             continue
         else:
             raise ValueError(
-                "Error: Unknown transaction type '{}'\n  {}, line {}".format(
+                "Unknown transaction type '{}', {}, line {}".format(
                     row[0], filePath, str(index + 3)
                 )
             )
-    # The imported CSV possibly ends with a batch of sales with no "Overførsel"
-    if transactions:
-        transactionsByBatch.append(transactions)
 
-    return transactionsByBatch
+    # The imported CSV possibly ends with a batch of sales with no "Overførsel"
+    if currentBatch.isActive():
+        currentBatch.commit()
+        transactionBatches.append(currentBatch)
+
+    return transactionBatches
 
 
 def prepareCsvWriter(filePath):
@@ -126,92 +262,12 @@ def prepareCsvWriter(filePath):
     return csvWriter
 
 
-def isRegistration(transaction, registrationFee):
-    """Finds out if the transaction is part of a registration.
-    
-    Searches for the substrings "tilmeld" and "indmeld" in the MP transaction comment,
-    warns if so, if in wrong format, and if amount is below transaction fee.
-    """
-
-    isRegistration = False
-
-    if "tilmeld" in transaction[2].lower() or "indmeld" in transaction[2].lower():
-        isRegistration = True
-
-        wrongFormatMsg = (
-            "* Wrongly formatted registration message."
-            if len(transaction[2].split()) != 2
-            else ""
-        )
-        wrongAmountMsg = (
-            "\n  * Not enough money transferred for registration."
-            if int(transaction[0]) < registrationFee
-            else ""
-        )
-
-        if wrongFormatMsg or wrongAmountMsg:
-            logging.warning(  # This is terrible :(
-                "{} for transaction {}, DKK {} - '{}':\n"
-                "  {}{}"
-                "\nStill treated as registration, edit infile and run again if not.\n".format(
-                    "Two errors" if wrongFormatMsg and wrongAmountMsg else "One error",
-                    transaction[1],
-                    toDecimalNumber(transaction[0]),
-                    transaction[2],
-                    wrongFormatMsg,
-                    wrongAmountMsg,
-                )
-            )
-
-    return isRegistration
+def toDanishDateFormat(date):
+    """Converts a yyyy-MM-dd date to dd-MM-yyyy as a string."""
+    return date.strftime("%d-%m-%Y")
 
 
-def calculateBatchInfo(batch, registrationFee=20000):
-    """Returns important information from a batch of transactions.
-    
-    Returns the amount transferred to the bank, the fees by MP, \
-    the registration fees paid by the members, and the voucher amount for the members. \
-    Amount is in øre.
-    """
-
-    registrationFees = 0
-    voucherAmount = 0
-    mpFees = 0
-    toBank = 0
-
-    for transaction in batch:
-        mpFee = int(transaction[3])
-        transAmount = int(transaction[0])
-
-        mpFees += mpFee
-        toBank += transAmount - mpFee
-
-        if isRegistration(transaction, registrationFee):
-            registrationFees += registrationFee
-            voucherAmount += transAmount - registrationFee
-        else:
-            voucherAmount += transAmount
-
-    return (toBank, mpFees, registrationFees, voucherAmount)
-
-
-def nextBusinessDay(date):
-    """Returns the next business day for bank transfer in dd-mm-yyyy format."""
-
-    nextDay = date.date() + dt.timedelta(days=1)
-    while nextDay.weekday() in holidays.WEEKEND or nextDay in DANISH_BANK_HOLIDAYS:
-        nextDay += dt.timedelta(days=1)
-
-    return dt.datetime.strftime(nextDay, "%d-%m-%Y")
-
-
-def toDecimalNumber(number):
-    """Formats an amount of øre to kroner."""
-
-    return "{:.2f}".format(int(number) / 100).replace(".", ",")
-
-
-def writeTransactions(filePath, appendixStart, transactionsByBatch):
+def writeCsv(filePath, appendixStart, transactionsByBatch):
     """Writes the information gathered throughout the script to a CSV file.
     
     The resulting CSV file is recognized by Dinero's journal entry CSV import. \
@@ -229,50 +285,44 @@ def writeTransactions(filePath, appendixStart, transactionsByBatch):
         )
 
     for batch in transactionsByBatch:
-        toBank, mpFees, registrationFees, voucherAmount = calculateBatchInfo(batch)
-        batchDate = dt.datetime.strptime(batch[0][1], "%d-%m-%Y")
-        bankTransferDate = nextBusinessDay(batchDate)
-
         csvWriter.writerow(
             [
                 currAppendix,
-                bankTransferDate,
-                "MP fra {}-{}".format(
-                    str(batchDate.day).zfill(2), str(batchDate.month).zfill(2)
-                ),
+                toDanishDateFormat(batch.bankTransferDate),
+                "MP fra " + batch.transferDate.strftime("%d-%m"),
                 Account.BANK,
-                toDecimalNumber(toBank),
+                toDecimalNumber(batch.toBank),
                 None,
             ]
         )
         csvWriter.writerow(
             [
                 currAppendix,
-                bankTransferDate,
+                toDanishDateFormat(batch.bankTransferDate),
                 "Gavekort",
                 Account.GAVEKORT,
-                "-" + toDecimalNumber(voucherAmount),
+                "-" + toDecimalNumber(batch.voucherAmount),
                 None,
             ]
         )
-        if registrationFees > 0:
+        if batch.registrations > 0:
             csvWriter.writerow(
                 [
                     currAppendix,
-                    bankTransferDate,
+                    toDanishDateFormat(batch.bankTransferDate),
                     "Tilmeldingsgebyr",
                     Account.SALG,
-                    "-" + toDecimalNumber(registrationFees),
+                    "-" + toDecimalNumber(batch.registrationFees),
                     None,
                 ]
             )
         csvWriter.writerow(
             [
                 currAppendix,
-                bankTransferDate,
+                toDanishDateFormat(batch.bankTransferDate),
                 "MP-gebyr",
                 Account.GEBYRER,
-                toDecimalNumber(mpFees),
+                toDecimalNumber(batch.mpFees),
                 None,
             ]
         )
@@ -280,23 +330,178 @@ def writeTransactions(filePath, appendixStart, transactionsByBatch):
         currAppendix += 1
 
 
+def handlePdfFilename(directory, initFilename):
+    """Appends letter to new filename if file already exists (e.g. 01-11-2018a.pdf)."""
+
+    i = "a"
+    outName = directory + "/" + initFilename + ".pdf"
+    while Path(outName).is_file():
+        outName = "{}/{}{}.pdf".format(directory, initFilename, i)
+        i = chr(ord(i) + 1)
+
+    return outName
+
+
+def writePdf(transBatch, directory):
+    """Writes information from a day's worth of MP transactions to a PDF.
+
+    Each piece of information is a cell with borders instead of the whole thing being
+    a table.
+    """
+
+    pdf = FPDF()
+    pdf.add_page()
+
+    pdf.ln(5)
+    pdf.set_font("Arial", "B", 16.0)
+    pdf.cell(157, 25.0, "Indbetalinger til Stregsystemet via MobilePay")
+    pdf.image("images/f-klubben.jpg", w=30)
+    pdf.ln(0.1)
+
+    pdf.set_font("Arial", "", 10.0)
+    pdf.cell(0, -10, "Bilagsdato: " + toDanishDateFormat(transBatch.bankTransferDate))
+    pdf.ln(2 * pdf.font_size)
+
+    # High-level information about a transaction batch.
+    infoLabelWidth = 60
+    infoValueWidth = 20
+    infoSpace = 1.5 * pdf.font_size
+
+    pdf.set_font("Arial", "B", 10.0)
+    pdf.cell(0, 0, "Oplysninger")
+    pdf.ln(infoSpace)
+
+    pdf.set_font("Arial", "", 10.0)
+    pdf.cell(infoLabelWidth, 0, "Dato for indbetalinger:")
+    pdf.cell(infoValueWidth, 0, toDanishDateFormat(transBatch.transferDate), align="R")
+    pdf.ln(infoSpace)
+
+    pdf.cell(infoLabelWidth, 0, "Antal indbetalinger:")
+    pdf.cell(
+        infoValueWidth,
+        0,
+        str(len(transBatch.getTransactionsByType(Transaction.SALG))),
+        align="R",
+    )
+    pdf.ln(infoSpace)
+    pdf.cell(infoLabelWidth, 0, "Indbetalt, kr.:")
+    pdf.cell(infoValueWidth, 0, toDecimalNumber(transBatch.totalAmount), align="R")
+    pdf.ln(infoSpace)
+
+    pdf.cell(infoLabelWidth, 0, "MP-gebyr, kr.:")
+    pdf.cell(infoValueWidth, 0, toDecimalNumber(transBatch.mpFees), align="R")
+    pdf.ln(infoSpace)
+
+    pdf.cell(infoLabelWidth, 0, "Antal tilmeldinger:")
+    pdf.cell(infoValueWidth, 0, str(transBatch.registrations), align="R")
+    pdf.ln(infoSpace)
+
+    pdf.cell(infoLabelWidth, 0, "Tilmeldingsgebyr inkl. moms, kr.:")
+    pdf.cell(infoValueWidth, 0, toDecimalNumber(transBatch.registrationFees), align="R")
+    pdf.ln(infoSpace)
+
+    pdf.cell(infoLabelWidth, 0, "Moms, kr.:")
+    pdf.cell(
+        infoValueWidth,
+        0,
+        toDecimalNumber(transBatch.registrationFees * 0.25),
+        align="R",
+    )
+    pdf.ln(infoSpace)
+
+    pdf.cell(infoLabelWidth, 0, "Gavekort, kr.:")
+    pdf.cell(infoValueWidth, 0, toDecimalNumber(transBatch.voucherAmount), align="R")
+    pdf.ln(3 * pdf.font_size)
+
+    transBatch.getTransactionsByType(Transaction.REFUNDERING)
+
+    pdf.set_font("Arial", "", 10.0)
+
+    header = [
+        ("Kl.", "R"),
+        ("Besked", "L"),
+        ("Tilm.gebyr, kr.", "R"),
+        ("Indb., kr.", "R"),
+        ("MP-gebyr, kr.", "R"),
+        ("Gavekort, kr.", "R"),
+    ]
+    colWidths = [11, 82, 25, 20, 26, 25]  # Seems to work well with A4
+
+    for i, col in enumerate(header):
+        pdf.cell(colWidths[i], 1.5 * pdf.font_size, col[0], border="B", align=col[1])
+
+    pdf.ln(2 * pdf.font_size)
+
+    # Table of information about each transaction. Numbers are right-aligned.
+    for transaction in transBatch.transactions:
+        if transaction.type == Transaction.SALG:
+            pdf.set_text_color(0, 0, 0)
+        else:
+            pdf.set_text_color(220, 0, 0)
+
+        pdf.cell(
+            colWidths[0],
+            2 * pdf.font_size,
+            str(transaction.time.strftime("%H:%M")),
+            align="R",
+        )
+        pdf.cell(colWidths[1], 2 * pdf.font_size, transaction.message[:49], align="L")
+        pdf.cell(
+            colWidths[2],
+            2 * pdf.font_size,
+            toDecimalNumber(Transaction.REGISTRATION_FEE)
+            if transaction.isRegistration
+            else "",
+            align="R",
+        )
+        pdf.cell(
+            colWidths[3],
+            2 * pdf.font_size,
+            toDecimalNumber(transaction.amount),
+            align="R",
+        )
+        pdf.cell(
+            colWidths[4],
+            2 * pdf.font_size,
+            toDecimalNumber(transaction.mpFee),
+            align="R",
+        )
+        pdf.cell(
+            colWidths[5],
+            2 * pdf.font_size,
+            toDecimalNumber(transaction.voucherAmount),
+            align="R",
+        )
+        pdf.ln(2 * pdf.font_size)
+
+    pdf.output(handlePdfFilename(directory, str(transBatch.bankTransferDate)))
+
+
 def main():
     """Reads a CSV by MP and writes a CSV recognizable by Dinero."""
 
-    logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
+    logging.basicConfig(level=logging.DEBUG, format="%(levelname)s: %(message)s")
 
     args = parseArgs()
     writePath = handleOutFile(args)
 
     try:
-        transactionsByBatch = readTransactionsFromFile(args.infile)
+        transactionBatches = readTransactionsFromFile(args.infile)
     except ValueError as e:
         logging.error(e)
         sys.exit(1)
 
-    writeTransactions(writePath, args.appendix_start, transactionsByBatch)
+    writeCsv(writePath, args.appendix_start, transactionBatches)
+    logging.info("Done writing CSV to " + writePath)
 
-    logging.info("Done writing to " + writePath)
+    if not args.no_pdf:
+        outdir = "pdf"  # This is just temporary
+        Path(outdir).mkdir(parents=True, exist_ok=True)
+
+        for batch in transactionBatches:
+            writePdf(batch, outdir)
+
+        logging.info("Done writing PDFs to " + outdir + "/")
 
 
 if __name__ == "__main__":
