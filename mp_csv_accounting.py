@@ -106,6 +106,7 @@ class TransactionBatch:
         self.voucherAmount = 0
         self.toBank = 0
         self.bankTransferDate = None
+        self.isCommitted = False
 
     def add_transaction(self, transaction):
         """Adds a transaction, and updates instance variables accordingly."""
@@ -131,6 +132,18 @@ class TransactionBatch:
         self.transferDate = self.transactions[0].date
         self.bankTransferDate = nextBusinessDay(self.transferDate)
         self.toBank = self.totalAmount - self.mpFees
+        self.isCommitted = True
+
+    def getTransactionsByType(self, type):
+        """Returns all transactions of specific type.
+
+        Type is either Transaction.SALG or Transaction.REFUNDERING.
+        """
+
+        if not self.isCommitted:
+            raise UserWarning("Transaction batch is not committed yet.")
+
+        return [t for t in self.transactions if t.type == type]
 
 
 class Account:
@@ -329,7 +342,7 @@ def handlePdfFilename(directory, initFilename):
     return outName
 
 
-def writePdf(transactionsBatch, directory):
+def writePdf(transBatch, directory):
     """Writes information from a day's worth of MP transactions to a PDF.
 
     Each piece of information is a cell with borders instead of the whole thing being
@@ -339,26 +352,76 @@ def writePdf(transactionsBatch, directory):
     pdf = FPDF()
     pdf.add_page()
 
-    pdf.set_font("Arial", "B", 16.0)
     pdf.ln(5)
+    pdf.set_font("Arial", "B", 16.0)
     pdf.cell(157, 25.0, "Indbetalinger til Stregsystemet via MobilePay")
     pdf.image("images/f-klubben.jpg", w=30)
-    pdf.ln(1)
+    pdf.ln(0.1)
 
     pdf.set_font("Arial", "", 10.0)
-    pdf.cell(0, -10, "Dato: " + toDanishDateFormat(transactionsBatch.bankTransferDate))
-    pdf.ln(1.5 * pdf.font_size)
+    pdf.cell(0, -10, "Bilagsdato: " + toDanishDateFormat(transBatch.bankTransferDate))
+    pdf.ln(2 * pdf.font_size)
 
+    # High-level information about a transaction batch.
+    infoLabelWidth = 60
+    infoValueWidth = 20
+    infoSpace = 1.5 * pdf.font_size
+
+    pdf.set_font("Arial", "B", 10.0)
+    pdf.cell(0, 0, "Oplysninger")
+    pdf.ln(infoSpace)
+
+    pdf.set_font("Arial", "", 10.0)
+    pdf.cell(infoLabelWidth, 0, "Dato for indbetalinger:")
+    pdf.cell(infoValueWidth, 0, toDanishDateFormat(transBatch.transferDate), align="R")
+    pdf.ln(infoSpace)
+
+    pdf.cell(infoLabelWidth, 0, "Antal indbetalinger:")
     pdf.cell(
-        0, -10, "Overførsler fra " + toDanishDateFormat(transactionsBatch.transferDate)
+        infoValueWidth,
+        0,
+        str(len(transBatch.getTransactionsByType(Transaction.SALG))),
+        align="R",
     )
-    pdf.ln(4 * pdf.font_size)
+    pdf.ln(infoSpace)
+    pdf.cell(infoLabelWidth, 0, "Indbetalt, kr.:")
+    pdf.cell(infoValueWidth, 0, toDecimalNumber(transBatch.totalAmount), align="R")
+    pdf.ln(infoSpace)
+
+    pdf.cell(infoLabelWidth, 0, "MP-gebyr, kr.:")
+    pdf.cell(infoValueWidth, 0, toDecimalNumber(transBatch.mpFees), align="R")
+    pdf.ln(infoSpace)
+
+    pdf.cell(infoLabelWidth, 0, "Antal tilmeldinger:")
+    pdf.cell(infoValueWidth, 0, str(transBatch.registrations), align="R")
+    pdf.ln(infoSpace)
+
+    pdf.cell(infoLabelWidth, 0, "Tilmeldingsgebyr inkl. moms, kr.:")
+    pdf.cell(infoValueWidth, 0, toDecimalNumber(transBatch.registrationFees), align="R")
+    pdf.ln(infoSpace)
+
+    pdf.cell(infoLabelWidth, 0, "Moms, kr.:")
+    pdf.cell(
+        infoValueWidth,
+        0,
+        toDecimalNumber(transBatch.registrationFees * 0.25),
+        align="R",
+    )
+    pdf.ln(infoSpace)
+
+    pdf.cell(infoLabelWidth, 0, "Gavekort, kr.:")
+    pdf.cell(infoValueWidth, 0, toDecimalNumber(transBatch.voucherAmount), align="R")
+    pdf.ln(3 * pdf.font_size)
+
+    transBatch.getTransactionsByType(Transaction.REFUNDERING)
+
+    pdf.set_font("Arial", "", 10.0)
 
     header = [
         ("Kl.", "R"),
         ("Besked", "L"),
         ("Tilm.gebyr, kr.", "R"),
-        ("Overf., kr.", "R"),
+        ("Indb., kr.", "R"),
         ("MP-gebyr, kr.", "R"),
         ("Gavekort, kr.", "R"),
     ]
@@ -369,7 +432,8 @@ def writePdf(transactionsBatch, directory):
 
     pdf.ln(2 * pdf.font_size)
 
-    for transaction in transactionsBatch.transactions:
+    # Table of information about each transaction. Numbers are right-aligned.
+    for transaction in transBatch.transactions:
         if transaction.type == Transaction.SALG:
             pdf.set_text_color(0, 0, 0)
         else:
@@ -410,7 +474,7 @@ def writePdf(transactionsBatch, directory):
         )
         pdf.ln(2 * pdf.font_size)
 
-    pdf.output(handlePdfFilename(directory, str(transactionsBatch.bankTransferDate)))
+    pdf.output(handlePdfFilename(directory, str(transBatch.bankTransferDate)))
 
 
 def main():
