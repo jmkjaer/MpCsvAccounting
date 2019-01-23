@@ -83,7 +83,7 @@ class Transaction:
                         if wrongFormatMsg and wrongAmountMsg
                         else "One error",
                         self.date,
-                        toDecimalNumber(self.amount),
+                        toDecimalNumber(self.amount, grouping=True),
                         self.message,
                         wrongFormatMsg,
                         wrongAmountMsg,
@@ -158,10 +158,25 @@ class Account:
 DANISH_BANK_HOLIDAYS = DanishBankHolidays()
 
 
-def toDecimalNumber(number):
-    """Formats an amount of øre to kroner."""
+def toDecimalNumber(number, grouping=False):
+    """Formats an amount of øre to kroner.
 
-    return "{:.2f}".format(int(number) / 100).replace(".", ",")
+    Trying to avoid locale stuff, since the user might not have da_DK installed.
+    If thounsands grouping is checked, we need a third intermediate symbol for the \
+    swapping of thousands separator and decimal separator. I've chosen the tilde.
+
+    For the CSV, Dinero accepts no grouping, while it's nice to have in the PDFs.
+    """
+
+    if grouping:
+        return (
+            "{:,.2f}".format(number / 100)
+            .replace(".", "~")
+            .replace(",", ".")
+            .replace("~", ",")
+        )
+    else:
+        return "{:.2f}".format(number / 100).replace(".", ",")
 
 
 def nextBusinessDay(date):
@@ -384,33 +399,57 @@ def writePdf(transBatch, directory):
         align="R",
     )
     pdf.ln(infoSpace)
-    pdf.cell(infoLabelWidth, 0, "Indbetalt, kr.:")
-    pdf.cell(infoValueWidth, 0, toDecimalNumber(transBatch.totalAmount), align="R")
-    pdf.ln(infoSpace)
-
-    pdf.cell(infoLabelWidth, 0, "MP-gebyr, kr.:")
-    pdf.cell(infoValueWidth, 0, toDecimalNumber(transBatch.mpFees), align="R")
-    pdf.ln(infoSpace)
 
     pdf.cell(infoLabelWidth, 0, "Antal tilmeldinger:")
     pdf.cell(infoValueWidth, 0, str(transBatch.registrations), align="R")
     pdf.ln(infoSpace)
 
+    pdf.cell(infoLabelWidth, 0, "MobilePay-gebyr, kr.:")
+    pdf.cell(
+        infoValueWidth, 0, toDecimalNumber(transBatch.mpFees, grouping=True), align="R"
+    )
+    pdf.ln(infoSpace)
+
+    pdf.cell(infoLabelWidth, 0, "Indbetalt, kr.:")
+    pdf.cell(
+        infoValueWidth,
+        0,
+        toDecimalNumber(transBatch.totalAmount, grouping=True),
+        align="R",
+    )
+    pdf.ln(infoSpace)
+
+    pdf.cell(infoLabelWidth, 0, "Til banken, kr.:")
+    pdf.cell(
+        infoValueWidth, 0, toDecimalNumber(transBatch.toBank, grouping=True), align="R"
+    )
+    pdf.ln(infoSpace)
+
+    pdf.cell(infoLabelWidth, 0, "Gavekort, kr.:")
+    pdf.cell(
+        infoValueWidth,
+        0,
+        toDecimalNumber(transBatch.voucherAmount, grouping=True),
+        align="R",
+    )
+    pdf.ln(infoSpace)
+
     pdf.cell(infoLabelWidth, 0, "Tilmeldingsgebyr inkl. moms, kr.:")
-    pdf.cell(infoValueWidth, 0, toDecimalNumber(transBatch.registrationFees), align="R")
+    pdf.cell(
+        infoValueWidth,
+        0,
+        toDecimalNumber(transBatch.registrationFees, grouping=True),
+        align="R",
+    )
     pdf.ln(infoSpace)
 
     pdf.cell(infoLabelWidth, 0, "Moms, kr.:")
     pdf.cell(
         infoValueWidth,
         0,
-        toDecimalNumber(transBatch.registrationFees * 0.25),
+        toDecimalNumber(transBatch.registrationFees * 0.25, grouping=True),
         align="R",
     )
-    pdf.ln(infoSpace)
-
-    pdf.cell(infoLabelWidth, 0, "Gavekort, kr.:")
-    pdf.cell(infoValueWidth, 0, toDecimalNumber(transBatch.voucherAmount), align="R")
     pdf.ln(3 * pdf.font_size)
 
     transBatch.getTransactionsByType(Transaction.REFUNDERING)
@@ -449,7 +488,7 @@ def writePdf(transBatch, directory):
         pdf.cell(
             colWidths[2],
             2 * pdf.font_size,
-            toDecimalNumber(Transaction.REGISTRATION_FEE)
+            toDecimalNumber(Transaction.REGISTRATION_FEE, grouping=True)
             if transaction.isRegistration
             else "",
             align="R",
@@ -457,19 +496,19 @@ def writePdf(transBatch, directory):
         pdf.cell(
             colWidths[3],
             2 * pdf.font_size,
-            toDecimalNumber(transaction.amount),
+            toDecimalNumber(transaction.amount, grouping=True),
             align="R",
         )
         pdf.cell(
             colWidths[4],
             2 * pdf.font_size,
-            toDecimalNumber(transaction.mpFee),
+            toDecimalNumber(transaction.mpFee, grouping=True),
             align="R",
         )
         pdf.cell(
             colWidths[5],
             2 * pdf.font_size,
-            toDecimalNumber(transaction.voucherAmount),
+            toDecimalNumber(transaction.voucherAmount, grouping=True),
             align="R",
         )
         pdf.ln(2 * pdf.font_size)
