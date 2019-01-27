@@ -220,17 +220,6 @@ def handleOutFile(args):
     return writePath
 
 
-def prepareCsvReader(filePath):
-    """Prepares the CSV reader by opening the file and skipping two lines."""
-
-    # Encoding is UTF-16, little-endian, due to MP using MS SQL Server
-    file = open(filePath, "r", newline="", encoding="utf-16-le")
-    next(file)
-    next(file)
-
-    return csv.reader(file, delimiter=";")
-
-
 def readTransactionsFromFile(filePath):
     """Returns transactions in batches read from the CSV file exported by MP.
     
@@ -238,7 +227,12 @@ def readTransactionsFromFile(filePath):
     batches before bank transfer. Amount is in øre (1/100th of a krone).
     """
 
-    reader = prepareCsvReader(filePath)
+    # Encoding is UTF-16, little-endian, due to MP using MS SQL Server
+    file = open(filePath, "r", newline="", encoding="utf-16-le")
+    next(file)
+    next(file)
+    reader = csv.reader(file, delimiter=";")
+
     transactionBatches = []
     currentBatch = TransactionBatch()
 
@@ -266,15 +260,9 @@ def readTransactionsFromFile(filePath):
         currentBatch.commit()
         transactionBatches.append(currentBatch)
 
+    file.close()
+
     return transactionBatches
-
-
-def prepareCsvWriter(filePath):
-    """Prepares the CSV writer by opening the file and setting delimiters."""
-
-    file = open(filePath, "w", newline="")
-    csvWriter = csv.writer(file, delimiter=";")
-    return csvWriter
 
 
 def toDanishDateFormat(date):
@@ -289,8 +277,10 @@ def writeCsv(filePath, appendixStart, transactionsByBatch):
     The written information is in Danish.
     """
 
+    file = open(filePath, "w", newline="")
+    csvWriter = csv.writer(file, delimiter=";")
+
     currAppendix = appendixStart
-    csvWriter = prepareCsvWriter(filePath)
 
     try:
         csvWriter.writerow(["Bilag nr.", "Dato", "Tekst", "Konto", "Beløb", "Modkonto"])
@@ -343,6 +333,8 @@ def writeCsv(filePath, appendixStart, transactionsByBatch):
         )
 
         currAppendix += 1
+
+    file.close()
 
 
 def handlePdfFilename(directory, initFilename):
