@@ -300,16 +300,17 @@ def writeCsv(filePath, appendixStart, transactionsByBatch):
                 None,
             ]
         )
-        csvWriter.writerow(
-            [
-                currAppendix,
-                toDanishDateFormat(batch.bankTransferDate),
-                "Gavekort",
-                Account.GAVEKORT,
-                "-" + toDecimalNumber(batch.voucherAmount),
-                None,
-            ]
-        )
+        if batch.voucherAmount > 0:
+            csvWriter.writerow(
+                [
+                    currAppendix,
+                    toDanishDateFormat(batch.bankTransferDate),
+                    "Gavekort",
+                    Account.GAVEKORT,
+                    "-" + toDecimalNumber(batch.voucherAmount),
+                    None,
+                ]
+            )
         if batch.registrations > 0:
             csvWriter.writerow(
                 [
