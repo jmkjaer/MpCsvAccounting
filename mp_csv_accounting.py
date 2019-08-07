@@ -64,30 +64,26 @@ class Transaction:
             isRegistration = True
 
             wrongFormatMsg = (
-                "* Wrongly formatted registration message."
+                "- Wrongly formatted registration message."
                 if len(self.message.split()) != 2
                 else ""
             )
             wrongAmountMsg = (
-                "\n  * Not enough money transferred for registration."
+                "- Not enough money transferred for registration."
                 if int(self.amount) < registrationFee
                 else ""
             )
 
             if wrongFormatMsg or wrongAmountMsg:
-                logging.warning(  # This is terrible :(
-                    "{} for transaction {}, DKK {} - '{}':\n"
-                    "  {}{}"
-                    "\nStill treated as registration, edit infile and run again if not.\n".format(
-                        "Two errors"
-                        if wrongFormatMsg and wrongAmountMsg
-                        else "One error",
-                        self.date,
-                        toDecimalNumber(self.amount, grouping=True),
-                        self.message,
-                        wrongFormatMsg,
-                        wrongAmountMsg,
-                    )
+                logging.warning(
+                    f"Error(s) for transaction {self.date}, DKK {toDecimalNumber(self.amount, grouping=True)} - '{self.message}':"
+                )
+                if wrongFormatMsg:
+                    logging.warning(f"  {wrongFormatMsg}")
+                if wrongAmountMsg:
+                    logging.warning(f"  {wrongAmountMsg}")
+                logging.warning(
+                    "Still treated as registration, edit infile and run again if not.\n"
                 )
 
         return isRegistration
@@ -509,7 +505,7 @@ def main():
     writePath = makeAppendixRange(args.appendix_start, len(transactionBatches)) + ".csv"
 
     writeCsv(writePath, args.appendix_start, transactionBatches)
-    logging.info(f"Done writing CSV to {writePath}")
+    logging.info(f"Done writing {writePath}")
 
     if not args.no_pdf:
         appendixNumber = args.appendix_start
@@ -520,7 +516,7 @@ def main():
             writePdf(batch, outdir, appendixNumber)
             appendixNumber += 1
 
-        logging.info(f"Done writing PDFs to {outdir}/")
+        logging.info(f"Done creating {len(transactionBatches)} PDFs in {outdir}/")
 
 
 if __name__ == "__main__":
