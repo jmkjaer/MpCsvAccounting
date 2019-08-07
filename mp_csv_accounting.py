@@ -338,19 +338,13 @@ def writeCsv(filePath, appendixStart, transactionsByBatch):
     file.close()
 
 
-def handlePdfFilename(directory, initFilename):
-    """Appends letter to new filename if file already exists (e.g. 01-11-2018a.pdf)."""
+def makePdfFilename(directory, appendixNumber):
+    """Creates a filename for the new PDF."""
 
-    i = "a"
-    outName = directory + "/" + initFilename + ".pdf"
-    while Path(outName).is_file():
-        outName = "{}/{}{}.pdf".format(directory, initFilename, i)
-        i = chr(ord(i) + 1)
-
-    return outName
+    return directory + "/" + str(appendixNumber) + ".pdf"
 
 
-def writePdf(transBatch, directory):
+def writePdf(transBatch, directory, appendixNumber):
     """Writes information from a day's worth of MP transactions to a PDF.
 
     Each piece of information is a cell with borders instead of the whole thing being
@@ -506,7 +500,7 @@ def writePdf(transBatch, directory):
         )
         pdf.ln(2 * pdf.font_size)
 
-    pdf.output(handlePdfFilename(directory, str(transBatch.bankTransferDate)))
+    pdf.output(makePdfFilename(directory, appendixNumber))
 
 
 def main():
@@ -515,23 +509,25 @@ def main():
     logging.basicConfig(level=logging.DEBUG, format="%(levelname)s: %(message)s")
 
     args = parseArgs()
-    writePath = handleOutFile(args)
-
     try:
         transactionBatches = readTransactionsFromFile(args.infile)
     except ValueError as e:
         logging.error(e)
         sys.exit(1)
 
+    writePath = handleOutFile(args)
+
     writeCsv(writePath, args.appendix_start, transactionBatches)
     logging.info("Done writing CSV to " + writePath)
 
     if not args.no_pdf:
         outdir = "pdf"  # This is just temporary
+        appendixNumber = args.appendix_start
         Path(outdir).mkdir(parents=True, exist_ok=True)
 
         for batch in transactionBatches:
-            writePdf(batch, outdir)
+            writePdf(batch, outdir, appendixNumber)
+            appendixNumber += 1
 
         logging.info("Done writing PDFs to " + outdir + "/")
 
