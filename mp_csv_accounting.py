@@ -197,27 +197,8 @@ def parseArgs():
     parser.add_argument(
         "appendix_start", type=int, help="appendix number start in Dinero"
     )
-    parser.add_argument(
-        "-o",
-        "--outfile",
-        metavar="FILE",
-        help="write output to file (default: out.csv)",
-    )
     parser.add_argument("-n", "--no-pdf", help="don't create PDFs", action="store_true")
     return parser.parse_args()
-
-
-def handleOutFile(args):
-    """If output filename is specified, create dir if applicable, and set writepath."""
-
-    if args.outfile:
-        writePath = args.outfile
-        if Path(args.outfile).parent:
-            Path(args.outfile).parent.mkdir(exist_ok=True)
-    else:
-        writePath = "out.csv"
-
-    return writePath
 
 
 def readTransactionsFromFile(filePath):
@@ -341,7 +322,7 @@ def writeCsv(filePath, appendixStart, transactionsByBatch):
 def makePdfFilename(directory, appendixNumber):
     """Creates a filename for the new PDF."""
 
-    return directory + "/" + str(appendixNumber) + ".pdf"
+    return f"{directory}/{str(appendixNumber)}.pdf"
 
 
 def writePdf(transBatch, directory, appendixNumber):
@@ -503,6 +484,16 @@ def writePdf(transBatch, directory, appendixNumber):
     pdf.output(makePdfFilename(directory, appendixNumber))
 
 
+def makeAppendixRange(appendixStart, appendixAmount):
+    """Creates the name for the PDF directory and CSV file based on appendix amount.
+    
+    For the example file in examples/mpExample.csv, this would be 123-148."""
+
+    appendixEnd = appendixStart + appendixAmount - 1
+
+    return f"{appendixStart}-{appendixEnd}"
+
+
 def main():
     """Reads a CSV by MP and writes a CSV recognizable by Dinero."""
 
@@ -515,21 +506,21 @@ def main():
         logging.error(e)
         sys.exit(1)
 
-    writePath = handleOutFile(args)
+    writePath = makeAppendixRange(args.appendix_start, len(transactionBatches)) + ".csv"
 
     writeCsv(writePath, args.appendix_start, transactionBatches)
-    logging.info("Done writing CSV to " + writePath)
+    logging.info(f"Done writing CSV to {writePath}")
 
     if not args.no_pdf:
-        outdir = "pdf"  # This is just temporary
         appendixNumber = args.appendix_start
+        outdir = makeAppendixRange(args.appendix_start, len(transactionBatches))
         Path(outdir).mkdir(parents=True, exist_ok=True)
 
         for batch in transactionBatches:
             writePdf(batch, outdir, appendixNumber)
             appendixNumber += 1
 
-        logging.info("Done writing PDFs to " + outdir + "/")
+        logging.info(f"Done writing PDFs to {outdir}/")
 
 
 if __name__ == "__main__":
