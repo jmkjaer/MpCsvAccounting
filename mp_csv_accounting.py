@@ -64,30 +64,26 @@ class Transaction:
             isRegistration = True
 
             wrongFormatMsg = (
-                "* Wrongly formatted registration message."
+                "- Wrongly formatted registration message."
                 if len(self.message.split()) != 2
                 else ""
             )
             wrongAmountMsg = (
-                "\n  * Not enough money transferred for registration."
+                "- Not enough money transferred for registration."
                 if int(self.amount) < registrationFee
                 else ""
             )
 
             if wrongFormatMsg or wrongAmountMsg:
-                logging.warning(  # This is terrible :(
-                    "{} for transaction {}, DKK {} - '{}':\n"
-                    "  {}{}"
-                    "\nStill treated as registration, edit infile and run again if not.\n".format(
-                        "Two errors"
-                        if wrongFormatMsg and wrongAmountMsg
-                        else "One error",
-                        self.date,
-                        toDecimalNumber(self.amount, grouping=True),
-                        self.message,
-                        wrongFormatMsg,
-                        wrongAmountMsg,
-                    )
+                logging.warning(
+                    f"Error(s) for transaction {self.date}, DKK {toDecimalNumber(self.amount, grouping=True)} - '{self.message}':"
+                )
+                if wrongFormatMsg:
+                    logging.warning(f"  {wrongFormatMsg}")
+                if wrongAmountMsg:
+                    logging.warning(f"  {wrongAmountMsg}")
+                logging.warning(
+                    "Still treated as registration, edit infile and run again if not.\n"
                 )
 
         return isRegistration
@@ -197,27 +193,8 @@ def parseArgs():
     parser.add_argument(
         "appendix_start", type=int, help="appendix number start in Dinero"
     )
-    parser.add_argument(
-        "-o",
-        "--outfile",
-        metavar="FILE",
-        help="write output to file (default: out.csv)",
-    )
     parser.add_argument("-n", "--no-pdf", help="don't create PDFs", action="store_true")
     return parser.parse_args()
-
-
-def handleOutFile(args):
-    """If output filename is specified, create dir if applicable, and set writepath."""
-
-    if args.outfile:
-        writePath = args.outfile
-        if Path(args.outfile).parent:
-            Path(args.outfile).parent.mkdir(exist_ok=True)
-    else:
-        writePath = "out.csv"
-
-    return writePath
 
 
 def readTransactionsFromFile(filePath):
@@ -338,19 +315,13 @@ def writeCsv(filePath, appendixStart, transactionsByBatch):
     file.close()
 
 
-def handlePdfFilename(directory, initFilename):
-    """Appends letter to new filename if file already exists (e.g. 01-11-2018a.pdf)."""
+def makePdfFilename(directory, appendixNumber):
+    """Creates a filename for the new PDF."""
 
-    i = "a"
-    outName = directory + "/" + initFilename + ".pdf"
-    while Path(outName).is_file():
-        outName = "{}/{}{}.pdf".format(directory, initFilename, i)
-        i = chr(ord(i) + 1)
-
-    return outName
+    return f"{directory}/{str(appendixNumber)}.pdf"
 
 
-def writePdf(transBatch, directory):
+def writePdf(transBatch, directory, appendixNumber):
     """Writes information from a day's worth of MP transactions to a PDF.
 
     Each piece of information is a cell with borders instead of the whole thing being
@@ -506,7 +477,17 @@ def writePdf(transBatch, directory):
         )
         pdf.ln(2 * pdf.font_size)
 
-    pdf.output(handlePdfFilename(directory, str(transBatch.bankTransferDate)))
+    pdf.output(makePdfFilename(directory, appendixNumber))
+
+
+def makeAppendixRange(appendixStart, appendixAmount):
+    """Creates the name for the PDF directory and CSV file based on appendix amount.
+    
+    For the example file in examples/mpExample.csv, this would be 123-148."""
+
+    appendixEnd = appendixStart + appendixAmount - 1
+
+    return f"{appendixStart}-{appendixEnd}"
 
 
 def main():
@@ -515,25 +496,27 @@ def main():
     logging.basicConfig(level=logging.DEBUG, format="%(levelname)s: %(message)s")
 
     args = parseArgs()
-    writePath = handleOutFile(args)
-
     try:
         transactionBatches = readTransactionsFromFile(args.infile)
     except ValueError as e:
         logging.error(e)
         sys.exit(1)
 
+    writePath = makeAppendixRange(args.appendix_start, len(transactionBatches)) + ".csv"
+
     writeCsv(writePath, args.appendix_start, transactionBatches)
-    logging.info("Done writing CSV to " + writePath)
+    logging.info(f"Done writing {writePath}")
 
     if not args.no_pdf:
-        outdir = "pdf"  # This is just temporary
+        appendixNumber = args.appendix_start
+        outdir = makeAppendixRange(args.appendix_start, len(transactionBatches))
         Path(outdir).mkdir(parents=True, exist_ok=True)
 
         for batch in transactionBatches:
-            writePdf(batch, outdir)
+            writePdf(batch, outdir, appendixNumber)
+            appendixNumber += 1
 
-        logging.info("Done writing PDFs to " + outdir + "/")
+        logging.info(f"Done creating {len(transactionBatches)} PDFs in {outdir}/")
 
 
 if __name__ == "__main__":

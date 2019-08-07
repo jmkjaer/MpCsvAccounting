@@ -18,14 +18,9 @@ python3 -m pip install --user -r requirements.txt
 
 An example MP CSV is in the examples directory.
 
-To output to "out.csv" in the current dir, pass input file and appendix number start:
+To output to "123-148.csv" in the current dir, pass input file and appendix number start:
 ```bash
 python3 mp_csv_accounting.py examples/mpExample.csv 123
-```
-
-To output to "somename.csv" in "somedir", pass input file, appendix start, and output file:
-```bash
-python3 mp_csv_accounting.py examples/mpExample.csv 123 -o someDir/somename.csv
 ```
 
 To avoid generating PDFs, pass "-n" or "--no-pdf":
