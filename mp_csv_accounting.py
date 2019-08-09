@@ -501,8 +501,22 @@ def makeAppendixRange(appendixStart, appendixAmount):
     return f"{appendixStart}-{appendixEnd}"
 
 
+def handlePdfCreation(appendixStart, transactionBatches):
+    """Creates a PDF directory, and calls function that creates PDFs. Returns outdir."""
+
+    appendixNumber = appendixStart
+    outdir = makeAppendixRange(appendixStart, len(transactionBatches))
+    Path(outdir).mkdir(parents=True, exist_ok=True)
+
+    for batch in transactionBatches:
+        writePdf(batch, outdir, appendixNumber)
+        appendixNumber += 1
+
+    return outdir
+
+
 def main():
-    """Reads a CSV by MP and writes a CSV recognizable by Dinero."""
+    """Reads a CSV by MP and writes a CSV recognizable by Dinero as well as PDFs."""
 
     logging.basicConfig(level=logging.DEBUG, format="%(levelname)s:\n%(message)s\n")
 
@@ -513,21 +527,13 @@ def main():
         logging.error(e)
         sys.exit(1)
 
-    writePath = makeAppendixRange(args.appendix_start, len(transactionBatches)) + ".csv"
-
-    writeCsv(writePath, args.appendix_start, transactionBatches)
-    logging.info(f"Done writing {writePath}")
+    csvName = makeAppendixRange(args.appendix_start, len(transactionBatches)) + ".csv"
+    writeCsv(csvName, args.appendix_start, transactionBatches)
+    logging.info(f"Done writing {csvName}")
 
     if not args.no_pdf:
-        appendixNumber = args.appendix_start
-        outdir = makeAppendixRange(args.appendix_start, len(transactionBatches))
-        Path(outdir).mkdir(parents=True, exist_ok=True)
-
-        for batch in transactionBatches:
-            writePdf(batch, outdir, appendixNumber)
-            appendixNumber += 1
-
-        logging.info(f"Done creating {len(transactionBatches)} PDFs in {outdir}/")
+        pdfDir = handlePdfCreation(args.appendix_start, transactionBatches)
+        logging.info(f"Done creating {len(transactionBatches)} PDFs in {pdfDir}/")
 
 
 if __name__ == "__main__":
