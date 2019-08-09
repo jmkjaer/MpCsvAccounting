@@ -25,6 +25,49 @@ class DanishBankHolidays(holidays.DK):
         self[dt.date(year, 12, 31)] = "Banklukkedag"  # New Year's Eve
 
 
+class RegistrationHandler:
+    """A handler for everything registration."""
+
+    def __init__(self, amount, date, message):
+        self.amount = amount
+        self.date = date
+        self.message = message
+
+    def isIntendedRegistration(self, *keywords):
+        """Checks if the message indicates that the transfer is part of registration."""
+
+        for keyword in keywords:
+            if keyword.lower() in self.message.lower():
+                return True
+
+        return False
+
+    def checkMessageFormat(self):
+        """Checks if message contains two words (e.g. "tilmeld someUsername")."""
+
+        return len(self.message.split()) == 2
+
+    def checkAmount(self):
+        """Checks if the person has sent enough money for registration."""
+
+        return self.amount >= Transaction.REGISTRATION_FEE
+
+    def checkAndDisplayRegistrationWarnings(self, correctFormat, correctAmount):
+        """Decides which warnings should be shown, and then shows them."""
+
+        if correctFormat and correctAmount:
+            return
+
+        message = f"Error(s) for transaction {self.date}, DKK {toDecimalNumber(self.amount, grouping=True)} - '{self.message}':\n"
+        if not correctFormat:
+            message += "  - Wrongly formatted registration message.\n"
+        if not correctAmount:
+            message += "  - Not enough money transferred for registration.\n"
+        message += "Still treated as registration, edit infile and run again if not."
+
+        logging.warning(message)
+
+
 class Transaction:
     """A transaction with relevant information."""
 
@@ -45,49 +88,17 @@ class Transaction:
         self.message = message
         self.mpFee = int(mpFee.replace(",", ""))
 
-        if self.isIntendedRegistration("tilmeld", "indmeld"):
+        regHandler = RegistrationHandler(self.amount, self.date, self.message)
+
+        if regHandler.isIntendedRegistration("tilmeld", "indmeld"):
             self.isRegistration = True
             self.voucherAmount = self.amount - self.REGISTRATION_FEE
-            self.displayRegistrationWarnings(
-                self.checkMessageFormat(), self.checkAmount()
+            regHandler.checkAndDisplayRegistrationWarnings(
+                regHandler.checkMessageFormat(), regHandler.checkAmount()
             )
         else:
             self.isRegistration = False
             self.voucherAmount = self.amount
-
-    def isIntendedRegistration(self, *keywords):
-        """Checks if the message indicates that the transfer is part of registration."""
-
-        for keyword in keywords:
-            if keyword.lower() in self.message.lower():
-                return True
-
-        return False
-
-    def checkMessageFormat(self):
-        """Checks if message contains two words (e.g. "tilmeld someUsername")."""
-
-        return len(self.message.split()) == 2
-
-    def checkAmount(self):
-        """Checks if the person has sent enough money for registration."""
-
-        return int(self.amount) >= self.REGISTRATION_FEE
-
-    def displayRegistrationWarnings(self, correctFormat, correctAmount):
-        """Decides which warnings should be shown, and then shows them."""
-
-        if correctFormat and correctAmount:
-            return
-
-        message = f"Error(s) for transaction {self.date}, DKK {toDecimalNumber(self.amount, grouping=True)} - '{self.message}':\n"
-        if not correctFormat:
-            message += "  - Wrongly formatted registration message.\n"
-        if not correctAmount:
-            message += "  - Not enough money transferred for registration.\n"
-        message += "Still treated as registration, edit infile and run again if not."
-
-        logging.warning(message)
 
 
 class TransactionBatch:
