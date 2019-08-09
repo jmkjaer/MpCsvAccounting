@@ -44,49 +44,50 @@ class Transaction:
         self.time = dt.datetime.strptime(time, "%H:%M").time()
         self.message = message
         self.mpFee = int(mpFee.replace(",", ""))
-        self.isRegistration = self.checkRegistration(Transaction.REGISTRATION_FEE)
 
-        if not self.isRegistration:
-            self.voucherAmount = self.amount
+        if self.isIntendedRegistration("tilmeld", "indmeld"):
+            self.isRegistration = True
+            self.voucherAmount = self.amount - self.REGISTRATION_FEE
+            self.displayRegistrationWarnings(
+                self.checkMessageFormat(), self.checkAmount()
+            )
         else:
-            self.voucherAmount = self.amount - Transaction.REGISTRATION_FEE
+            self.isRegistration = False
+            self.voucherAmount = self.amount
 
-    def checkRegistration(self, registrationFee):
-        """Finds out if the transaction is part of a registration.
-        
-        Searches for the substrings "tilmeld" and "indmeld" in the MP transaction comment,
-        warns if so, if in wrong format, and if amount is below transaction fee.
-        """
+    def isIntendedRegistration(self, *keywords):
+        """Checks if the message indicates that the transfer is part of registration."""
 
-        isRegistration = False
+        for keyword in keywords:
+            if keyword.lower() in self.message.lower():
+                return True
 
-        if "tilmeld" in self.message.lower() or "indmeld" in self.message.lower():
-            isRegistration = True
+        return False
 
-            wrongFormatMsg = (
-                "- Wrongly formatted registration message."
-                if len(self.message.split()) != 2
-                else ""
-            )
-            wrongAmountMsg = (
-                "- Not enough money transferred for registration."
-                if int(self.amount) < registrationFee
-                else ""
-            )
+    def checkMessageFormat(self):
+        """Checks if message contains two words (e.g. "tilmeld someUsername")."""
 
-            if wrongFormatMsg or wrongAmountMsg:
-                logging.warning(
-                    f"Error(s) for transaction {self.date}, DKK {toDecimalNumber(self.amount, grouping=True)} - '{self.message}':"
-                )
-                if wrongFormatMsg:
-                    logging.warning(f"  {wrongFormatMsg}")
-                if wrongAmountMsg:
-                    logging.warning(f"  {wrongAmountMsg}")
-                logging.warning(
-                    "Still treated as registration, edit infile and run again if not.\n"
-                )
+        return len(self.message.split()) == 2
 
-        return isRegistration
+    def checkAmount(self):
+        """Checks if the person has sent enough money for registration."""
+
+        return int(self.amount) >= self.REGISTRATION_FEE
+
+    def displayRegistrationWarnings(self, correctFormat, correctAmount):
+        """Decides which warnings should be shown, and then shows them."""
+
+        if correctFormat and correctAmount:
+            return
+
+        message = f"Error(s) for transaction {self.date}, DKK {toDecimalNumber(self.amount, grouping=True)} - '{self.message}':\n"
+        if not correctFormat:
+            message += "  - Wrongly formatted registration message.\n"
+        if not correctAmount:
+            message += "  - Not enough money transferred for registration.\n"
+        message += "Still treated as registration, edit infile and run again if not."
+
+        logging.warning(message)
 
 
 class TransactionBatch:
@@ -113,9 +114,8 @@ class TransactionBatch:
         self.mpFees += transaction.mpFee
 
         if transaction.isRegistration:
-            transaction.registrationFee = Transaction.REGISTRATION_FEE
             self.registrations += 1
-            self.registrationFees += transaction.registrationFee
+            self.registrationFees += Transaction.REGISTRATION_FEE
 
     def isActive(self):
         """Does the batch currently have any transactions?"""
@@ -493,7 +493,7 @@ def makeAppendixRange(appendixStart, appendixAmount):
 def main():
     """Reads a CSV by MP and writes a CSV recognizable by Dinero."""
 
-    logging.basicConfig(level=logging.DEBUG, format="%(levelname)s: %(message)s")
+    logging.basicConfig(level=logging.DEBUG, format="%(levelname)s:\n%(message)s\n")
 
     args = parseArgs()
     try:
