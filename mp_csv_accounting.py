@@ -58,7 +58,7 @@ class RegistrationHandler:
         if correctFormat and correctAmount:
             return
 
-        message = f"Error(s) for transaction {self.date}, DKK {toDecimalNumber(self.amount, grouping=True)} - '{self.message}':\n"
+        message = f"For transaction {self.date}, DKK {toDecimalNumber(self.amount, grouping=True)} - '{self.message}':\n"
         if not correctFormat:
             message += "  - Wrongly formatted registration message.\n"
         if not correctAmount:
@@ -208,8 +208,11 @@ def parseArgs():
     return parser.parse_args()
 
 
-def readTransactionsFromFile(filePath):
+def readTransactionsFromFile(filePath, stregsystemNumber="90601"):
     """Returns transactions in batches read from the CSV file exported by MP.
+
+    The parameter stregsystemNumber is the number that members of F-klubben
+    send money to using MP for the Stregsystem.
     
     Returns a list of lists of user transactions bundled in transaction \
     batches before bank transfer. Amount is in øre (1/100th of a krone).
@@ -224,7 +227,13 @@ def readTransactionsFromFile(filePath):
     transactionBatches = []
     currentBatch = TransactionBatch()
 
+    transactionsToOtherPlaces = []
+
     for index, row in enumerate(reader):
+        if row[4] != stregsystemNumber:
+            transactionsToOtherPlaces.append((row[0], row[5], str(index + 3)))
+            continue
+
         if row[0] == Transaction.SALG or row[0] == Transaction.REFUNDERING:
             currentBatch.add_transaction(
                 Transaction(row[0], row[3], row[6], row[7], row[9], row[10])
@@ -238,10 +247,14 @@ def readTransactionsFromFile(filePath):
             continue
         else:
             raise ValueError(
-                "Unknown transaction type '{}', {}, line {}".format(
-                    row[0], filePath, str(index + 3)
-                )
+                f"Line {str(index + 3)} in infile:\nUnknown transaction type '{row[0]}'"
             )
+
+    if transactionsToOtherPlaces:
+        message = ""
+        for transaction in transactionsToOtherPlaces:
+            message += f"Skipped '{transaction[0]}' for '{transaction[1]}' on line {transaction[2]}.\n"
+        logging.info(message[:-1])  # Skip last newline, since logging already adds it
 
     # The imported CSV possibly ends with a batch of sales with no "Overførsel"
     if currentBatch.isActive():
@@ -521,11 +534,16 @@ def main():
     logging.basicConfig(level=logging.DEBUG, format="%(levelname)s:\n%(message)s\n")
 
     args = parseArgs()
+
     try:
         transactionBatches = readTransactionsFromFile(args.infile)
     except ValueError as e:
         logging.error(e)
-        sys.exit(1)
+        return
+
+    if len(transactionBatches) == 0:
+        logging.warning("No valid transactions, nothing to be done.")
+        return
 
     csvName = makeAppendixRange(args.appendix_start, len(transactionBatches)) + ".csv"
     writeCsv(csvName, args.appendix_start, transactionBatches)
