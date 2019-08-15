@@ -536,16 +536,20 @@ def main():
         logging.error(e)
         return
 
-    if len(transactionBatches) == 0:
+    batchAmount = len(transactionBatches)
+
+    if batchAmount == 0:
         logging.warning("No valid transactions, nothing to be done.")
         return
 
-    csvName = makeAppendixRange(args.appendix_start, len(transactionBatches)) + ".csv"
+    csvName = makeAppendixRange(args.appendix_start, batchAmount) + ".csv"
     writeCsv(csvName, args.appendix_start, transactionBatches)
     logging.info(f"Done writing {csvName}")
 
     pdfDir = handlePdfCreation(args.appendix_start, transactionBatches)
-    logging.info(f"Done creating {len(transactionBatches)} PDFs in {pdfDir}/")
+    logging.info(
+        f"Done creating {batchAmount} PDF{'s' if batchAmount > 1 else ''} in {pdfDir}/"
+    )
 
 
 if __name__ == "__main__":
