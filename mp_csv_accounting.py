@@ -78,11 +78,7 @@ class Transaction:
     def __init__(self, type, amount, date, time, message, mpFee):
         self.type = type
 
-        if type == Transaction.SALG:
-            self.amount = int(amount.replace(",", "").replace(".", ""))
-        else:
-            self.amount = -int(amount.replace(",", "").replace(".", ""))
-
+        self.amount = int(amount.replace(",", "").replace(".", ""))
         self.date = dt.datetime.strptime(date, "%d-%m-%Y").date()
         self.time = dt.datetime.strptime(time, "%H:%M").time()
         self.message = message
