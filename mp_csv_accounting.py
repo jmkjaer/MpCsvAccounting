@@ -204,7 +204,6 @@ def parseArgs():
     parser.add_argument(
         "appendix_start", type=int, help="appendix number start in Dinero"
     )
-    parser.add_argument("-n", "--no-pdf", help="don't create PDFs", action="store_true")
     return parser.parse_args()
 
 
@@ -549,9 +548,8 @@ def main():
     writeCsv(csvName, args.appendix_start, transactionBatches)
     logging.info(f"Done writing {csvName}")
 
-    if not args.no_pdf:
-        pdfDir = handlePdfCreation(args.appendix_start, transactionBatches)
-        logging.info(f"Done creating {len(transactionBatches)} PDFs in {pdfDir}/")
+    pdfDir = handlePdfCreation(args.appendix_start, transactionBatches)
+    logging.info(f"Done creating {len(transactionBatches)} PDFs in {pdfDir}/")
 
 
 if __name__ == "__main__":
