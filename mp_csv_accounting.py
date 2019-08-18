@@ -202,12 +202,21 @@ def parseArgs():
     )
     return parser.parse_args()
 
+def readConfig(configFile = "config.cfg"):
+    configDict = {}
+    with open(configFile, "r") as f:
+        for line in f:
+            if line.rstrip():
+                (key, val) = line.split()
+                configDict[key] = val
 
-def readTransactionsFromFile(filePath, stregsystemNumber="90601"):
+    return configDict
+
+def readTransactionsFromFile(filePath, number):
     """Returns transactions in batches read from the CSV file exported by MP.
 
-    The parameter stregsystemNumber is the number that members of F-klubben
-    send money to using MP for the Stregsystem.
+    The parameter "number" is the number that members of F-klubben
+    send money to using MP for the Stregsystem. Is read from a config file.
     
     Returns a list of lists of user transactions bundled in transaction \
     batches before bank transfer. Amount is in øre (1/100th of a krone).
@@ -222,11 +231,11 @@ def readTransactionsFromFile(filePath, stregsystemNumber="90601"):
     transactionBatches = []
     currentBatch = TransactionBatch()
 
-    transactionsToOtherPlaces = []
+    otherPlacesAmount = 0
 
     for index, row in enumerate(reader):
-        if row[4] != stregsystemNumber:
-            transactionsToOtherPlaces.append((row[0], row[5], str(index + 3)))
+        if row[4] != number:
+            otherPlacesAmount += 1
             continue
 
         if row[0] == Transaction.SALG or row[0] == Transaction.REFUNDERING:
@@ -245,11 +254,8 @@ def readTransactionsFromFile(filePath, stregsystemNumber="90601"):
                 f"Line {str(index + 3)} in infile:\nUnknown transaction type '{row[0]}'"
             )
 
-    if transactionsToOtherPlaces:
-        message = ""
-        for transaction in transactionsToOtherPlaces:
-            message += f"Skipped '{transaction[0]}' for '{transaction[1]}' on line {transaction[2]}.\n"
-        logging.info(message[:-1])  # Skip last newline, since logging already adds it
+    if otherPlacesAmount > 0:
+        logging.info(f"Skipped {otherPlacesAmount} transactions not for {number}.")
 
     # The imported CSV possibly ends with a batch of sales with no "Overførsel"
     if currentBatch.isActive():
@@ -530,8 +536,10 @@ def main():
 
     args = parseArgs()
 
+    config = readConfig()
+
     try:
-        transactionBatches = readTransactionsFromFile(args.infile)
+        transactionBatches = readTransactionsFromFile(args.infile, config["number"])
     except ValueError as e:
         logging.error(e)
         return
