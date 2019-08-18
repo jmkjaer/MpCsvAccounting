@@ -204,12 +204,20 @@ def parseArgs():
 
 
 def readConfig(configFile="config.cfg"):
+    """Reads the config file for values that should not be hard-coded."""
+
+    mustDefineKeys = ["number"]
     configDict = {}
+
     with open(configFile, "r") as f:
         for line in f:
-            if line.rstrip():
+            if not line.lstrip().startswith("#") and line.rstrip():
                 (key, val) = line.split()
                 configDict[key] = val
+
+    for key in mustDefineKeys:
+        if not key in configDict:
+            raise KeyError(f'The key "{key}" must be defined in {configFile}')
 
     return configDict
 
@@ -543,10 +551,12 @@ def main():
 
     args = parseArgs()
 
-    config = readConfig()
-
     try:
+        config = readConfig()
         transactionBatches = readTransactionsFromFile(args.infile, config["number"])
+    except KeyError as e:
+        logging.error(e)
+        return
     except ValueError as e:
         logging.error(e)
         return
