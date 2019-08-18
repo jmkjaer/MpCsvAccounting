@@ -202,7 +202,8 @@ def parseArgs():
     )
     return parser.parse_args()
 
-def readConfig(configFile = "config.cfg"):
+
+def readConfig(configFile="config.cfg"):
     configDict = {}
     with open(configFile, "r") as f:
         for line in f:
@@ -211,6 +212,7 @@ def readConfig(configFile = "config.cfg"):
                 configDict[key] = val
 
     return configDict
+
 
 def readTransactionsFromFile(filePath, number):
     """Returns transactions in batches read from the CSV file exported by MP.
@@ -233,29 +235,34 @@ def readTransactionsFromFile(filePath, number):
 
     otherPlacesAmount = 0
 
-    for index, row in enumerate(reader):
-        if row[4] != number:
+    # Columns in file:
+    # 0:"Type" 1:"Navn" 2:"Mobilnummer" 3:"Beløb" 4:"MobilePay-nummer" 5:"Navn på betalingssted"
+    # 6:"Dato" 7:"Tid" 8:"Transaktions-ID" 9:"Besked" 10:"Gebyr" 11:"Saldo"
+    for index, col in enumerate(reader):
+        if col[4] != number:
             otherPlacesAmount += 1
             continue
 
-        if row[0] == Transaction.SALG or row[0] == Transaction.REFUNDERING:
+        if col[0] == Transaction.SALG or col[0] == Transaction.REFUNDERING:
             currentBatch.add_transaction(
-                Transaction(row[0], row[3], row[6], row[7], row[9], row[10])
+                Transaction(col[0], col[3], col[6], col[7], col[9], col[10])
             )
-        elif row[0] == "Overførsel":
+        elif col[0] == "Overførsel":
             if currentBatch.isActive():
                 currentBatch.commit()
                 transactionBatches.append(currentBatch)
                 currentBatch = TransactionBatch()
-        elif row[0] == "Gebyr":
+        elif col[0] == "Gebyr":
             continue
         else:
             raise ValueError(
-                f"Line {str(index + 3)} in infile:\nUnknown transaction type '{row[0]}'"
+                f"Line {str(index + 3)} in infile:\nUnknown transaction type '{col[0]}'"
             )
 
     if otherPlacesAmount > 0:
-        logging.info(f"Skipped {otherPlacesAmount} transactions not for {number}.")
+        logging.info(
+            f"Skipped {otherPlacesAmount} transaction{'s' if otherPlacesAmount > 1 else ''} not for {number}."
+        )
 
     # The imported CSV possibly ends with a batch of sales with no "Overførsel"
     if currentBatch.isActive():
