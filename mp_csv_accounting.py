@@ -202,7 +202,7 @@ def parseArgs():
     return parser.parse_args()
 
 
-def readConfig(configFile="config.cfg"):
+def readConfig(configFile="config/config.cfg"):
     """Reads the config file for values that should not be hard-coded."""
 
     mustDefineKeys = ["number"]

@@ -1,6 +1,9 @@
+<img src="images/f-klubben.jpg" width="200" style="float:right">
+
 # MpCsvAccounting
 
-This is a parser for MobilePay MyShop CSVs. It writes CSVs that Dinero accounting software recognizes, as well as PDFs used for documentation. In use by F-klubben at the Department of Computer Science at Aalborg University, Denmark.
+This is a parser for MobilePay MyShop CSVs. It writes CSVs that Dinero accounting software recognizes, as well as PDFs used for documentation.
+In use by F-klubben at the Department of Computer Science at Aalborg University, Denmark.
 
 ## Prerequisites
 
@@ -9,23 +12,20 @@ In addition, [Pip](https://github.com/pypa/pip) is needed for dependency install
 
 ## Installation
 
-The script currently has two high-level dependencies, [holidays](https://github.com/dr-prodigy/python-holidays), and [PyFPDF](https://github.com/reingart/pyfpdf). To install with pip, run
+The script currently has three high-level dependencies, [holidays](https://github.com/dr-prodigy/python-holidays), [PyFPDF](https://github.com/reingart/pyfpdf), and [dateutil](https://github.com/dateutil/dateutil). To install with pip, run
 ```bash
 python3 -m pip install --user -r requirements.txt
 ```
 
 ## Usage
 
+**Before use, remember to change the number in the config file to the actual Stregsystem one.**
+
 An example MP CSV is in the examples directory.
 
 To output to "123-148.csv" in the current dir, pass input file and appendix number start:
 ```bash
 python3 mp_csv_accounting.py examples/mpExample.csv 123
-```
-
-To avoid generating PDFs, pass "-n" or "--no-pdf":
-```bash
-python3 mp_csv_accounting.py examples/mpExample.csv 123 -n
 ```
 
 ## License
