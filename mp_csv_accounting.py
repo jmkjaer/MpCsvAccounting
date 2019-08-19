@@ -234,48 +234,46 @@ def readTransactionsFromFile(filePath, mpNumber):
     # Encoding is UTF-16, little-endian, due to MP using MS SQL Server
     file = open(filePath, "r", newline="", encoding="utf-16-le")
     next(file)
-    next(file)
-    reader = csv.reader(file, delimiter=";")
+    reader = csv.DictReader(file, delimiter=";")
 
     transactionBatches = []
     currentBatch = TransactionBatch()
 
-    transferAmount = 0  # to parameter mpNumber
+    transferAmount = 0  # to $mpNumber
     otherPlacesAmount = 0
 
-    # Columns in file:
-    # 0:"Type" 1:"Navn" 2:"Mobilnummer" 3:"Beløb" 4:"MobilePay-nummer" 5:"Navn på betalingssted"
-    # 6:"Dato" 7:"Tid" 8:"Transaktions-ID" 9:"Besked" 10:"Gebyr" 11:"Saldo"
-    for index, col in enumerate(reader):
-        if col[0] == Transaction.SALG or col[0] == Transaction.REFUNDERING:
-            if col[4] == mpNumber:
+    for index, row in enumerate(reader):
+        if row["Type"] == Transaction.SALG or row["Type"] == Transaction.REFUNDERING:
+            if row["MobilePay-nummer"] == mpNumber:
                 currentBatch.add_transaction(
                     Transaction(
-                        type=col[0],
-                        amount=col[3],
-                        date=col[6],
-                        time=col[7],
-                        message=col[9],
-                        mpFee=col[10],
+                        row["Type"],
+                        row["Beløb"],
+                        row["Dato"],
+                        row["Tid"],
+                        row["Besked"],
+                        row["Gebyr"],
                     )
                 )
                 transferAmount += 1
             else:
                 otherPlacesAmount += 1
-        elif col[0] == "Overførsel":
+        elif row["Type"] == "Overførsel":
             if currentBatch.isActive():
                 currentBatch.commit()
                 transactionBatches.append(currentBatch)
                 currentBatch = TransactionBatch()
-        elif col[0] == "Gebyr":
+        elif row["Type"] == "Gebyr":
             continue
         else:
             raise ValueError(
-                f"Line {str(index + 3)} in infile:\nUnknown transaction type '{col[0]}'"
+                f"Line {str(index + 3)} in infile:\nUnknown transaction type '{row['Type']}'."
             )
 
     if transferAmount > 0:
-        logging.info(f"Handled {transferAmount} transfer{'s' if transferAmount > 1 else ''} for {mpNumber}.")
+        logging.info(
+            f"Handled {transferAmount} transfer{'s' if transferAmount > 1 else ''} for {mpNumber}."
+        )
 
     if otherPlacesAmount > 0:
         logging.info(
