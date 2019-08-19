@@ -77,7 +77,6 @@ class Transaction:
 
     def __init__(self, type, amount, date, time, message, mpFee):
         self.type = type
-
         self.amount = int(amount.replace(",", "").replace(".", ""))
         self.date = dt.datetime.strptime(date, "%d-%m-%Y").date()
         self.time = dt.datetime.strptime(time, "%H:%M").time()
@@ -222,10 +221,10 @@ def readConfig(configFile="config.cfg"):
     return configDict
 
 
-def readTransactionsFromFile(filePath, number):
+def readTransactionsFromFile(filePath, mpNumber):
     """Returns transactions in batches read from the CSV file exported by MP.
 
-    The parameter "number" is the number that members of F-klubben
+    The parameter "mpNumber" is the number that members of F-klubben
     send money to using MP for the Stregsystem. Is read from a config file.
     
     Returns a list of lists of user transactions bundled in transaction \
@@ -241,20 +240,28 @@ def readTransactionsFromFile(filePath, number):
     transactionBatches = []
     currentBatch = TransactionBatch()
 
+    transferAmount = 0  # to parameter mpNumber
     otherPlacesAmount = 0
 
     # Columns in file:
     # 0:"Type" 1:"Navn" 2:"Mobilnummer" 3:"Beløb" 4:"MobilePay-nummer" 5:"Navn på betalingssted"
     # 6:"Dato" 7:"Tid" 8:"Transaktions-ID" 9:"Besked" 10:"Gebyr" 11:"Saldo"
     for index, col in enumerate(reader):
-        if col[4] != number:
-            otherPlacesAmount += 1
-            continue
-
         if col[0] == Transaction.SALG or col[0] == Transaction.REFUNDERING:
-            currentBatch.add_transaction(
-                Transaction(col[0], col[3], col[6], col[7], col[9], col[10])
-            )
+            if col[4] == mpNumber:
+                currentBatch.add_transaction(
+                    Transaction(
+                        type=col[0],
+                        amount=col[3],
+                        date=col[6],
+                        time=col[7],
+                        message=col[9],
+                        mpFee=col[10],
+                    )
+                )
+                transferAmount += 1
+            else:
+                otherPlacesAmount += 1
         elif col[0] == "Overførsel":
             if currentBatch.isActive():
                 currentBatch.commit()
@@ -267,12 +274,15 @@ def readTransactionsFromFile(filePath, number):
                 f"Line {str(index + 3)} in infile:\nUnknown transaction type '{col[0]}'"
             )
 
+    if transferAmount > 0:
+        logging.info(f"Handled {transferAmount} transfer{'s' if transferAmount > 1 else ''} for {mpNumber}.")
+
     if otherPlacesAmount > 0:
         logging.info(
-            f"Skipped {otherPlacesAmount} transaction{'s' if otherPlacesAmount > 1 else ''} not for {number}."
+            f"Skipped {otherPlacesAmount} transfer{'s' if otherPlacesAmount > 1 else ''} not for {mpNumber}."
         )
 
-    # The imported CSV possibly ends with a batch of sales with no "Overførsel"
+    # The imported CSV possibly ends with a batch of sales with no "Overførsel" due to next day bank transfer being next month
     if currentBatch.isActive():
         currentBatch.commit()
         transactionBatches.append(currentBatch)
