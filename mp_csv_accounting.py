@@ -4,12 +4,13 @@ import argparse
 import csv
 import datetime as dt
 import logging
-import sys
 from pathlib import Path
 
 import holidays
 from dateutil.easter import easter
 from fpdf import FPDF
+
+from config import Config
 
 
 class DanishBankHolidays(holidays.DK):
@@ -33,10 +34,10 @@ class RegistrationHandler:
         self.date = date
         self.message = message
 
-    def isIntendedRegistration(self, *keywords):
+    def isIntendedRegistration(self):
         """Checks if the message indicates that the transfer is part of registration."""
 
-        for keyword in keywords:
+        for keyword in Config.stregsystem.get("registration_keywords").split():
             if keyword.lower() in self.message.lower():
                 return True
 
@@ -50,7 +51,7 @@ class RegistrationHandler:
     def checkAmount(self):
         """Checks if the person has sent enough money for registration."""
 
-        return self.amount >= Transaction.REGISTRATION_FEE
+        return self.amount >= Config.stregsystem.getint("registration_fee")
 
     def checkAndDisplayRegistrationWarnings(self, correctFormat, correctAmount):
         """Decides which warnings should be shown, and then shows them."""
@@ -73,7 +74,6 @@ class Transaction:
 
     SALG = "Salg"
     REFUNDERING = "Refundering"
-    REGISTRATION_FEE = 20000
 
     def __init__(self, type, amount, date, time, message, mpFee):
         self.type = type
@@ -85,9 +85,11 @@ class Transaction:
 
         regHandler = RegistrationHandler(self.amount, self.date, self.message)
 
-        if regHandler.isIntendedRegistration("tilmeld", "indmeld"):
+        if regHandler.isIntendedRegistration():
             self.isRegistration = True
-            self.voucherAmount = self.amount - self.REGISTRATION_FEE
+            self.voucherAmount = self.amount - Config.stregsystem.getint(
+                "registration_fee"
+            )
             regHandler.checkAndDisplayRegistrationWarnings(
                 regHandler.checkMessageFormat(), regHandler.checkAmount()
             )
@@ -121,7 +123,7 @@ class TransactionBatch:
 
         if transaction.isRegistration:
             self.registrations += 1
-            self.registrationFees += Transaction.REGISTRATION_FEE
+            self.registrationFees += Config.stregsystem.getint("registration_fee")
 
     def isActive(self):
         """Does the batch currently have any transactions?"""
@@ -146,15 +148,6 @@ class TransactionBatch:
             raise UserWarning("Transaction batch is not committed yet.")
 
         return [t for t in self.transactions if t.type == type]
-
-
-class Account:
-    """String constants for Dinero's accounts."""
-
-    BANK = "55000"
-    GAVEKORT = "63080"
-    GEBYRER = "7220"
-    SALG = "1000"
 
 
 DANISH_BANK_HOLIDAYS = DanishBankHolidays()
@@ -200,25 +193,6 @@ def parseArgs():
         "appendix_start", type=int, help="appendix number start in Dinero"
     )
     return parser.parse_args()
-
-
-def readConfig(configFile="config/config.cfg"):
-    """Reads the config file for values that should not be hard-coded."""
-
-    mustDefineKeys = ["number"]
-    configDict = {}
-
-    with open(configFile, "r") as f:
-        for line in f:
-            if not line.lstrip().startswith("#") and line.rstrip():
-                (key, val) = line.split()
-                configDict[key] = val
-
-    for key in mustDefineKeys:
-        if not key in configDict:
-            raise KeyError(f'The key "{key}" must be defined in {configFile}')
-
-    return configDict
 
 
 def readTransactionsFromFile(filePath, mpNumber):
@@ -320,7 +294,7 @@ def writeCsv(filePath, appendixStart, transactionsByBatch):
                 currAppendix,
                 toDanishDateFormat(batch.bankTransferDate),
                 "MP fra " + batch.transferDate.strftime("%d-%m"),
-                Account.BANK,
+                Config.dinero.get("bank"),
                 toDecimalNumber(batch.toBank),
                 None,
             ]
@@ -331,7 +305,7 @@ def writeCsv(filePath, appendixStart, transactionsByBatch):
                     currAppendix,
                     toDanishDateFormat(batch.bankTransferDate),
                     "Gavekort",
-                    Account.GAVEKORT,
+                    Config.dinero.get("gavekort"),
                     "-" + toDecimalNumber(batch.voucherAmount),
                     None,
                 ]
@@ -342,7 +316,7 @@ def writeCsv(filePath, appendixStart, transactionsByBatch):
                     currAppendix,
                     toDanishDateFormat(batch.bankTransferDate),
                     "Tilmeldingsgebyr",
-                    Account.SALG,
+                    Config.dinero.get("salg"),
                     "-" + toDecimalNumber(batch.registrationFees),
                     None,
                 ]
@@ -352,7 +326,7 @@ def writeCsv(filePath, appendixStart, transactionsByBatch):
                 currAppendix,
                 toDanishDateFormat(batch.bankTransferDate),
                 "MP-gebyr",
-                Account.GEBYRER,
+                Config.dinero.get("gebyrer"),
                 toDecimalNumber(batch.mpFees),
                 None,
             ]
@@ -379,6 +353,7 @@ def writePdf(transBatch, directory, appendixNumber):
     pdf = FPDF()
     pdf.add_page()
 
+    # Header
     pdf.ln(5)
     pdf.set_font("Arial", "B", 16.0)
     pdf.cell(157, 25.0, "Indbetalinger til Stregsystemet via MobilePay")
@@ -500,7 +475,9 @@ def writePdf(transBatch, directory, appendixNumber):
         pdf.cell(
             colWidths[2],
             2 * pdf.font_size,
-            toDecimalNumber(Transaction.REGISTRATION_FEE, grouping=True)
+            toDecimalNumber(
+                Config.stregsystem.getint("registration_fee"), grouping=True
+            )
             if transaction.isRegistration
             else "",
             align="R",
@@ -560,12 +537,11 @@ def main():
     args = parseArgs()
 
     try:
-        config = readConfig()
-        transactionBatches = readTransactionsFromFile(args.infile, config["number"])
-    except KeyError as e:
-        logging.error(e)
-        return
-    except ValueError as e:
+        Config.readConfig()
+        transactionBatches = readTransactionsFromFile(
+            args.infile, Config.stregsystem.get("mp_number")
+        )
+    except (KeyError, ValueError) as e:
         logging.error(e)
         return
 
