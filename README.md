@@ -19,10 +19,11 @@ python3 -m pip install --user -r requirements.txt
 
 An example MP CSV is in the examples directory.
 
-To output to "123-148.csv" in the current dir, pass input file and appendix number start:
+To generate CSV and PDFs for the example, pass input file and appendix start number:
 ```bash
-python3 mp_csv_accounting.py examples/mpExample.csv 123
+./mp_csv_accounting.py examples/mpExample.csv 123
 ```
+The output, 123-148.csv and PDF directory 123-148/, is located in the project root.
 
 **Remember to change the number in the config file to the actual Stregsystem one before real use.**
 
