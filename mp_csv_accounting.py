@@ -4,13 +4,14 @@ import argparse
 import csv
 import datetime as dt
 import logging
+import re
 from pathlib import Path
 
 import holidays
 from dateutil.easter import easter
 from fpdf import FPDF
 
-from config import Config
+import config
 
 
 class DanishBankHolidays(holidays.DK):
@@ -27,7 +28,18 @@ class DanishBankHolidays(holidays.DK):
 
 
 class RegistrationHandler:
-    """A handler for everything registration."""
+    """A handler for everything registration.
+
+    Needs to be instantiated to check for registration.
+    """
+
+    keywords = config.stregsystem.get("registration_keywords").split()
+    # If people find more ways to misspell the keyword, just add to config
+    # and '|'.join(keywords) in the regex instead of making more of a mess of it.
+    registrationRegex = re.compile(
+        "^(?:[\w\-\.]+[:,]?(?: | ?[+-] ?)(?i:til|ind)m(?:e|æ)ldn?(?:ing)?"
+        "|(?i:til|ind)m(?:e|æ)ldn?(?:ing)?[:,]?(?: | ?[+-] ?)[\w\-\.]+)$"
+    )
 
     def __init__(self, amount, date, message):
         self.amount = amount
@@ -37,21 +49,25 @@ class RegistrationHandler:
     def isIntendedRegistration(self):
         """Checks if the message indicates that the transfer is part of registration."""
 
-        for keyword in Config.stregsystem.get("registration_keywords").split():
+        for keyword in RegistrationHandler.keywords:
             if keyword.lower() in self.message.lower():
                 return True
 
         return False
 
     def checkMessageFormat(self):
-        """Checks if message contains two words (e.g. "tilmeld someUsername")."""
+        """Purpose is to warn if not matching regex, while still treating transaction as registration.
 
-        return len(self.message.split()) == 2
+        This way, the user can edit the MP CSV if it's not actually a registration,
+        instead of the script just discarding it, which might be a mistake.
+        """
+
+        return re.fullmatch(RegistrationHandler.registrationRegex, self.message)
 
     def checkAmount(self):
         """Checks if the person has sent enough money for registration."""
 
-        return self.amount >= Config.stregsystem.getint("registration_fee")
+        return self.amount >= config.stregsystem.getint("registration_fee")
 
     def checkAndDisplayRegistrationWarnings(self, correctFormat, correctAmount):
         """Decides which warnings should be shown, and then shows them."""
@@ -87,7 +103,7 @@ class Transaction:
 
         if regHandler.isIntendedRegistration():
             self.isRegistration = True
-            self.voucherAmount = self.amount - Config.stregsystem.getint(
+            self.voucherAmount = self.amount - config.stregsystem.getint(
                 "registration_fee"
             )
             regHandler.checkAndDisplayRegistrationWarnings(
@@ -123,7 +139,7 @@ class TransactionBatch:
 
         if transaction.isRegistration:
             self.registrations += 1
-            self.registrationFees += Config.stregsystem.getint("registration_fee")
+            self.registrationFees += config.stregsystem.getint("registration_fee")
 
     def isActive(self):
         """Does the batch currently have any transactions?"""
@@ -157,7 +173,7 @@ def toDecimalNumber(number, grouping=False):
     """Formats an amount of øre to kroner.
 
     Trying to avoid locale stuff, since the user might not have da_DK installed.
-    If thounsands grouping is checked, we need a third intermediate symbol for the \
+    If thounsands grouping is checked, we need a third intermediate symbol for the
     swapping of thousands separator and decimal separator. I've chosen the tilde.
 
     For the CSV, Dinero accepts no grouping, while it's nice to have in the PDFs.
@@ -201,7 +217,7 @@ def readTransactionsFromFile(filePath, mpNumber):
     The parameter "mpNumber" is the number that members of F-klubben
     send money to using MP for the Stregsystem. Is read from a config file.
     
-    Returns a list of lists of user transactions bundled in transaction \
+    Returns a list of lists of user transactions bundled in transaction
     batches before bank transfer. Amount is in øre (1/100th of a krone).
     """
 
@@ -272,7 +288,7 @@ def toDanishDateFormat(date):
 def writeCsv(filePath, appendixStart, transactionsByBatch):
     """Writes the information gathered throughout the script to a CSV file.
     
-    The resulting CSV file is recognized by Dinero's journal entry CSV import. \
+    The resulting CSV file is recognized by Dinero's journal entry CSV import.
     The written information is in Danish.
     """
 
@@ -294,7 +310,7 @@ def writeCsv(filePath, appendixStart, transactionsByBatch):
                 currAppendix,
                 toDanishDateFormat(batch.bankTransferDate),
                 "MP fra " + batch.transferDate.strftime("%d-%m"),
-                Config.dinero.get("bank"),
+                config.dinero.get("bank"),
                 toDecimalNumber(batch.toBank),
                 None,
             ]
@@ -305,7 +321,7 @@ def writeCsv(filePath, appendixStart, transactionsByBatch):
                     currAppendix,
                     toDanishDateFormat(batch.bankTransferDate),
                     "Gavekort",
-                    Config.dinero.get("gavekort"),
+                    config.dinero.get("gavekort"),
                     "-" + toDecimalNumber(batch.voucherAmount),
                     None,
                 ]
@@ -316,7 +332,7 @@ def writeCsv(filePath, appendixStart, transactionsByBatch):
                     currAppendix,
                     toDanishDateFormat(batch.bankTransferDate),
                     "Tilmeldingsgebyr",
-                    Config.dinero.get("salg"),
+                    config.dinero.get("salg"),
                     "-" + toDecimalNumber(batch.registrationFees),
                     None,
                 ]
@@ -326,7 +342,7 @@ def writeCsv(filePath, appendixStart, transactionsByBatch):
                 currAppendix,
                 toDanishDateFormat(batch.bankTransferDate),
                 "MP-gebyr",
-                Config.dinero.get("gebyrer"),
+                config.dinero.get("gebyrer"),
                 toDecimalNumber(batch.mpFees),
                 None,
             ]
@@ -476,7 +492,7 @@ def writePdf(transBatch, directory, appendixNumber):
             colWidths[2],
             2 * pdf.font_size,
             toDecimalNumber(
-                Config.stregsystem.getint("registration_fee"), grouping=True
+                config.stregsystem.getint("registration_fee"), grouping=True
             )
             if transaction.isRegistration
             else "",
@@ -537,11 +553,10 @@ def main():
     args = parseArgs()
 
     try:
-        Config.readConfig()
         transactionBatches = readTransactionsFromFile(
-            args.infile, Config.stregsystem.get("mp_number")
+            args.infile, config.stregsystem.get("mp_number")
         )
-    except (KeyError, ValueError) as e:
+    except ValueError as e:
         logging.error(e)
         return
 
