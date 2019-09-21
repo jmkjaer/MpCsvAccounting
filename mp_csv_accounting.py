@@ -450,7 +450,7 @@ def writePdf(transBatch, directory, appendixNumber):
     pdf.cell(
         infoValueWidth,
         0,
-        toDecimalNumber(transBatch.registrationFees * 0.25, grouping=True),
+        toDecimalNumber(transBatch.registrationFees * 0.2, grouping=True),
         align="R",
     )
     pdf.ln(3 * pdf.font_size)
