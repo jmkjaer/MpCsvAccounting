@@ -160,6 +160,13 @@ class TransactionBatch:
 
 class Layout:
     @staticmethod
+    def setFklubInfo(pdf):
+        pdf.set_font("Arial", "", 7)
+        pdf.multi_cell(
+            0, 3.5, "F-Klubben-Institut for Datalogi\nCVR: 16427888\nhttp://fklub.dk/"
+        )
+
+    @staticmethod
     def salesLayout(pdf, transBatch, title):
         setNormalFont = lambda: pdf.set_font("Arial", "", 10.0)
 
@@ -167,16 +174,19 @@ class Layout:
         pdf.ln(5)
         pdf.set_font("Arial", "B", 16.0)
         pdf.cell(157, 25.0, title)
-        pdf.image("images/f-klubben.jpg", w=30)
+        pdf.image("images/f-klubben.png", w=30)
         pdf.ln(0.1)
 
         setNormalFont()
         pdf.cell(
-            0, -10, "Bilagsdato: " + toDanishDateFormat(transBatch.bankTransferDate)
+            155, -10, "Bilagsdato: " + toDanishDateFormat(transBatch.bankTransferDate)
         )
-        pdf.ln(2 * pdf.font_size)
+        Layout.setFklubInfo(pdf)
+
+        pdf.ln(-1 * pdf.font_size)
 
         # High-level information about a transaction batch.
+        setNormalFont()
         infoLabelWidth = 60
         infoValueWidth = 20
         infoSpace = 1.5 * pdf.font_size
@@ -296,17 +306,20 @@ class Layout:
         # Header
         pdf.ln(5)
         pdf.set_font("Arial", "B", 16.0)
-        pdf.cell(157, 25.0, "Indbetalinger til Stregsystemet via MobilePay")
-        pdf.image("images/f-klubben.jpg", w=30)
+        pdf.cell(157, 25.0, title)
+        pdf.image("images/f-klubben.png", w=30)
         pdf.ln(0.1)
 
         setNormalFont()
         pdf.cell(
-            0, -10, "Bilagsdato: " + toDanishDateFormat(transBatch.bankTransferDate)
+            155, -10, "Bilagsdato: " + toDanishDateFormat(transBatch.bankTransferDate)
         )
-        pdf.ln(2 * pdf.font_size)
+        Layout.setFklubInfo(pdf)
+
+        pdf.ln(-1 * pdf.font_size)
 
         # High-level information about a transaction batch.
+        setNormalFont()
         infoLabelWidth = 60
         infoValueWidth = 20
         infoSpace = 1.5 * pdf.font_size
@@ -728,15 +741,15 @@ def main():
         pdfDir = handlePdfCreation(
             args.appendix_start,
             transactionBatches,
-            Layout.salesLayout,
-            config.stregsystem.get("stregsystemTitle"),
+            Layout.stregsystemLayout,
+            config.stregsystem.get("stregsystem_title"),
         )
     else:
         pdfDir = handlePdfCreation(
             args.appendix_start,
             transactionBatches,
             Layout.salesLayout,
-            config.stregsystem.get("salesTitle"),
+            config.stregsystem.get("sales_title"),
         )
 
     logging.info(
