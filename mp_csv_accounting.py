@@ -158,9 +158,49 @@ class TransactionBatch:
         return [t for t in self.transactions if t.type == type]
 
 
+class PDF(FPDF):
+    """ Class whose purpose is to redefine existing header and footer from FPDF."""
+
+    def header(self):
+        if self.page_no() != 1:  # Header is different for first page
+            if config.stregsystem.get("mp_number") == "90601":
+                tableHeader = [
+                    ("Kl.", "R"),
+                    ("Besked", "L"),
+                    ("Tilm.gebyr, kr.", "R"),
+                    ("Indb., kr.", "R"),
+                    ("MP-gebyr, kr.", "R"),
+                    ("Gavekort, kr.", "R"),
+                ]
+                colWidths = [11, 82, 25, 20, 26, 25]  # Seems to work well with A4
+            else:  # Sales layout
+                tableHeader = [
+                    ("Kl.", "R"),
+                    ("Navn", "L"),
+                    ("Indb., kr.", "R"),
+                    ("Moms, kr.", "R"),
+                    ("MP-gebyr, kr.", "R"),
+                ]
+                colWidths = [11, 101, 26, 23, 28]
+
+            for i, col in enumerate(tableHeader):
+                self.cell(
+                    colWidths[i], 1.5 * self.font_size, col[0], border="B", align=col[1]
+                )
+            self.ln(2 * self.font_size)
+
+    def footer(self):
+        self.alias_nb_pages()
+        self.set_y(-15)
+        self.set_font("Arial", "", 8)
+        self.cell(0, 10, str(self.page_no()) + "/{nb}", align="C")
+
+
 class Layout:
     @staticmethod
     def setFklubInfo(pdf):
+        """Three lines of text with F-klubben's actual name, CVR, and website."""
+
         pdf.set_font("Arial", "", 7)
         pdf.multi_cell(
             0, 3.5, "F-Klubben-Institut for Datalogi\nCVR: 16427888\nhttp://fklub.dk/"
@@ -680,7 +720,8 @@ def writePdf(transBatch, directory, appendixNumber, layout, title):
     a table.
     """
 
-    pdf = FPDF()
+    pdf = PDF()
+    pdf.set_auto_page_break(1, margin=13)
     pdf.add_page()
 
     layout(pdf, transBatch, title)
@@ -698,16 +739,33 @@ def makeAppendixRange(appendixStart, appendixAmount):
     return f"{appendixStart}-{appendixEnd}"
 
 
-def handlePdfCreation(appendixStart, transactionBatches, layout, title):
+def handlePdfCreation(appendixStart, transactionBatches):
     """Creates a PDF directory, and calls function that creates PDFs. Returns outdir."""
 
     appendixNumber = appendixStart
     outdir = makeAppendixRange(appendixStart, len(transactionBatches))
     Path(outdir).mkdir(parents=True, exist_ok=True)
 
-    for batch in transactionBatches:
-        writePdf(batch, outdir, appendixNumber, layout, title)
-        appendixNumber += 1
+    if config.stregsystem.get("mp_number") == "90601":
+        for batch in transactionBatches:
+            writePdf(
+                batch,
+                outdir,
+                appendixNumber,
+                Layout.stregsystemLayout,
+                config.stregsystem.get("stregsystem_title"),
+            )
+            appendixNumber += 1
+    else:
+        for batch in transactionBatches:
+            writePdf(
+                batch,
+                outdir,
+                appendixNumber,
+                Layout.salesLayout,
+                config.stregsystem.get("sales_title"),
+            )
+            appendixNumber += 1
 
     return outdir
 
@@ -737,20 +795,7 @@ def main():
     writeCsv(csvName, args.appendix_start, transactionBatches)
     logging.info(f"Done writing {csvName}")
 
-    if config.stregsystem.get("mp_number") == "90601":
-        pdfDir = handlePdfCreation(
-            args.appendix_start,
-            transactionBatches,
-            Layout.stregsystemLayout,
-            config.stregsystem.get("stregsystem_title"),
-        )
-    else:
-        pdfDir = handlePdfCreation(
-            args.appendix_start,
-            transactionBatches,
-            Layout.salesLayout,
-            config.stregsystem.get("sales_title"),
-        )
+    pdfDir = handlePdfCreation(args.appendix_start, transactionBatches)
 
     logging.info(
         f"Done creating {batchAmount} PDF{'s' if batchAmount > 1 else ''} in {pdfDir}/"
