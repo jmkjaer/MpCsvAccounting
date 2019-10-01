@@ -83,8 +83,8 @@ class Transaction:
     SALG = "Salg"
     REFUNDERING = "Refundering"
 
-    def __init__(self, type, name, amount, date, time, message, mpFee):
-        self.type = type
+    def __init__(self, transactionType, name, amount, date, time, message, mpFee):
+        self.transactionType = transactionType
         self.name = name
         self.amount = int(amount.replace(",", "").replace(".", ""))
         self.date = dt.datetime.strptime(date, "%d-%m-%Y").date()
@@ -146,7 +146,7 @@ class TransactionBatch:
         self.toBank = self.totalAmount - self.mpFees
         self.isCommitted = True
 
-    def getTransactionsByType(self, type):
+    def getTransactionsByType(self, transactionType):
         """Returns all transactions of specific type.
 
         Type is either Transaction.SALG or Transaction.REFUNDERING.
@@ -155,7 +155,7 @@ class TransactionBatch:
         if not self.isCommitted:
             raise UserWarning("Transaction batch is not committed yet.")
 
-        return [t for t in self.transactions if t.type == type]
+        return [t for t in self.transactions if t.transactionType == transactionType]
 
 
 class PDF(FPDF):
