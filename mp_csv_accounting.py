@@ -158,6 +158,366 @@ class TransactionBatch:
         return [t for t in self.transactions if t.transactionType == transactionType]
 
 
+class PDF(FPDF):
+    """ Class whose purpose is to redefine existing header and footer from FPDF."""
+
+    def header(self):
+        if self.page_no() != 1:  # Header is different for first page
+            if config.stregsystem.get("mp_number") == "90601":
+                tableHeader = [
+                    ("Kl.", "R"),
+                    ("Besked", "L"),
+                    ("Tilm.gebyr, kr.", "R"),
+                    ("Indb., kr.", "R"),
+                    ("MP-gebyr, kr.", "R"),
+                    ("Gavekort, kr.", "R"),
+                ]
+                colWidths = [11, 82, 25, 20, 26, 25]  # Seems to work well with A4
+            else:  # Sales layout
+                tableHeader = [
+                    ("Kl.", "R"),
+                    ("Navn", "L"),
+                    ("Indb., kr.", "R"),
+                    ("Moms, kr.", "R"),
+                    ("MP-gebyr, kr.", "R"),
+                ]
+                colWidths = [11, 101, 26, 23, 28]
+
+            for i, col in enumerate(tableHeader):
+                self.cell(
+                    colWidths[i], 1.5 * self.font_size, col[0], border="B", align=col[1]
+                )
+            self.ln(2 * self.font_size)
+
+    def footer(self):
+        self.alias_nb_pages()
+        self.set_y(-15)
+        self.set_font("Arial", "", 8)
+        self.cell(0, 10, str(self.page_no()) + "/{nb}", align="C")
+
+
+class Layout:
+    @staticmethod
+    def setFklubInfo(pdf):
+        """Three lines of text with F-klubben's actual name, CVR, and website."""
+
+        pdf.set_font("Arial", "", 7)
+        pdf.multi_cell(
+            0, 3.5, "F-Klubben-Institut for Datalogi\nCVR: 16427888\nhttp://fklub.dk/"
+        )
+
+    @staticmethod
+    def salesLayout(pdf, transBatch, title):
+        setNormalFont = lambda: pdf.set_font("Arial", "", 10.0)
+
+        # Header
+        pdf.ln(5)
+        pdf.set_font("Arial", "B", 16.0)
+        pdf.cell(157, 25.0, title)
+        pdf.image("images/f-klubben.png", w=30)
+        pdf.ln(0.1)
+
+        setNormalFont()
+        pdf.cell(
+            155, -10, "Bilagsdato: " + toDanishDateFormat(transBatch.bankTransferDate)
+        )
+        Layout.setFklubInfo(pdf)
+
+        pdf.ln(-1 * pdf.font_size)
+
+        # High-level information about a transaction batch.
+        setNormalFont()
+        infoLabelWidth = 60
+        infoValueWidth = 20
+        infoSpace = 1.5 * pdf.font_size
+
+        pdf.set_font("Arial", "B", 10.0)
+        pdf.cell(0, 0, "Oplysninger")
+        pdf.ln(infoSpace)
+
+        setNormalFont()
+        pdf.cell(infoLabelWidth, 0, "Dato for indbetalinger:")
+        pdf.cell(
+            infoValueWidth, 0, toDanishDateFormat(transBatch.transferDate), align="R"
+        )
+        pdf.ln(infoSpace)
+
+        pdf.cell(infoLabelWidth, 0, "Antal indbetalinger:")
+        pdf.cell(
+            infoValueWidth,
+            0,
+            str(len(transBatch.getTransactionsByType(Transaction.SALG))),
+            align="R",
+        )
+        pdf.ln(infoSpace)
+
+        pdf.cell(infoLabelWidth, 0, "MobilePay-gebyr, kr.:")
+        pdf.cell(
+            infoValueWidth,
+            0,
+            toDecimalNumber(transBatch.mpFees, grouping=True),
+            align="R",
+        )
+        pdf.ln(infoSpace)
+
+        pdf.cell(infoLabelWidth, 0, "Indbetalt inkl. moms, kr.:")
+        pdf.cell(
+            infoValueWidth,
+            0,
+            toDecimalNumber(transBatch.totalAmount, grouping=True),
+            align="R",
+        )
+        pdf.ln(infoSpace)
+
+        pdf.cell(infoLabelWidth, 0, "Moms, kr.:")
+        pdf.cell(
+            infoValueWidth,
+            0,
+            toDecimalNumber(transBatch.totalAmount * 0.2, grouping=True),
+            align="R",
+        )
+        pdf.ln(infoSpace)
+
+        pdf.cell(infoLabelWidth, 0, "Til banken, kr.:")
+        pdf.cell(
+            infoValueWidth,
+            0,
+            toDecimalNumber(transBatch.toBank, grouping=True),
+            align="R",
+        )
+        pdf.ln(3 * pdf.font_size)
+
+        setNormalFont()
+
+        header = [
+            ("Kl.", "R"),
+            ("Navn", "L"),
+            ("Indb., kr.", "R"),
+            ("Moms, kr.", "R"),
+            ("MP-gebyr, kr.", "R"),
+        ]
+        colWidths = [11, 101, 26, 23, 28]  # Seems to work well with A4
+
+        for i, col in enumerate(header):
+            pdf.cell(
+                colWidths[i], 1.5 * pdf.font_size, col[0], border="B", align=col[1]
+            )
+
+        pdf.ln(2 * pdf.font_size)
+
+        # Table of information about each transaction. Numbers are right-aligned.
+        for transaction in transBatch.transactions:
+            if transaction.type == Transaction.SALG:
+                pdf.set_text_color(0, 0, 0)
+            else:
+                pdf.set_text_color(220, 0, 0)
+
+            pdf.cell(
+                colWidths[0],
+                2 * pdf.font_size,
+                str(transaction.time.strftime("%H:%M")),
+                align="R",
+            )
+            pdf.cell(colWidths[1], 2 * pdf.font_size, transaction.name[:49], align="L")
+            pdf.cell(
+                colWidths[2],
+                2 * pdf.font_size,
+                toDecimalNumber(transaction.amount, grouping=True),
+                align="R",
+            )
+            pdf.cell(
+                colWidths[3],
+                2 * pdf.font_size,
+                toDecimalNumber(transaction.amount * 0.2),
+                align="R",
+            ),
+            pdf.cell(
+                colWidths[4],
+                2 * pdf.font_size,
+                toDecimalNumber(transaction.mpFee, grouping=True),
+                align="R",
+            )
+            pdf.ln(2 * pdf.font_size)
+
+    @staticmethod
+    def stregsystemLayout(pdf, transBatch, title):
+        setNormalFont = lambda: pdf.set_font("Arial", "", 10.0)
+
+        # Header
+        pdf.ln(5)
+        pdf.set_font("Arial", "B", 16.0)
+        pdf.cell(157, 25.0, title)
+        pdf.image("images/f-klubben.png", w=30)
+        pdf.ln(0.1)
+
+        setNormalFont()
+        pdf.cell(
+            155, -10, "Bilagsdato: " + toDanishDateFormat(transBatch.bankTransferDate)
+        )
+        Layout.setFklubInfo(pdf)
+
+        pdf.ln(-1 * pdf.font_size)
+
+        # High-level information about a transaction batch.
+        setNormalFont()
+        infoLabelWidth = 60
+        infoValueWidth = 20
+        infoSpace = 1.5 * pdf.font_size
+
+        pdf.set_font("Arial", "B", 10.0)
+        pdf.cell(0, 0, "Oplysninger")
+        pdf.ln(infoSpace)
+
+        setNormalFont()
+        pdf.cell(infoLabelWidth, 0, "Dato for indbetalinger:")
+        pdf.cell(
+            infoValueWidth, 0, toDanishDateFormat(transBatch.transferDate), align="R"
+        )
+        pdf.ln(infoSpace)
+
+        pdf.cell(infoLabelWidth, 0, "Antal indbetalinger:")
+        pdf.cell(
+            infoValueWidth,
+            0,
+            str(len(transBatch.getTransactionsByType(Transaction.SALG))),
+            align="R",
+        )
+        pdf.ln(infoSpace)
+
+        pdf.cell(infoLabelWidth, 0, "Antal tilmeldinger:")
+        pdf.cell(infoValueWidth, 0, str(transBatch.registrations), align="R")
+        pdf.ln(infoSpace)
+
+        pdf.cell(infoLabelWidth, 0, "MobilePay-gebyr, kr.:")
+        pdf.cell(
+            infoValueWidth,
+            0,
+            toDecimalNumber(transBatch.mpFees, grouping=True),
+            align="R",
+        )
+        pdf.ln(infoSpace)
+
+        pdf.cell(infoLabelWidth, 0, "Indbetalt, kr.:")
+        pdf.cell(
+            infoValueWidth,
+            0,
+            toDecimalNumber(transBatch.totalAmount, grouping=True),
+            align="R",
+        )
+        pdf.ln(infoSpace)
+
+        pdf.cell(infoLabelWidth, 0, "Til banken, kr.:")
+        pdf.cell(
+            infoValueWidth,
+            0,
+            toDecimalNumber(transBatch.toBank, grouping=True),
+            align="R",
+        )
+        pdf.ln(infoSpace)
+
+        pdf.cell(infoLabelWidth, 0, "Gavekort, kr.:")
+        pdf.cell(
+            infoValueWidth,
+            0,
+            toDecimalNumber(transBatch.voucherAmount, grouping=True),
+            align="R",
+        )
+        pdf.ln(infoSpace)
+
+        pdf.cell(infoLabelWidth, 0, "Tilmeldingsgebyr inkl. moms, kr.:")
+        pdf.cell(
+            infoValueWidth,
+            0,
+            toDecimalNumber(transBatch.registrationFees, grouping=True),
+            align="R",
+        )
+        pdf.ln(infoSpace)
+
+        pdf.cell(infoLabelWidth, 0, "Moms, kr.:")
+        pdf.cell(
+            infoValueWidth,
+            0,
+            toDecimalNumber(transBatch.registrationFees * 0.2, grouping=True),
+            align="R",
+        )
+        pdf.ln(3 * pdf.font_size)
+
+        transBatch.getTransactionsByType(Transaction.REFUNDERING)
+
+        setNormalFont()
+
+        header = [
+            ("Kl.", "R"),
+            ("Besked", "L"),
+            ("Tilm.gebyr, kr.", "R"),
+            ("Indb., kr.", "R"),
+            ("MP-gebyr, kr.", "R"),
+            ("Gavekort, kr.", "R"),
+        ]
+        colWidths = [11, 82, 25, 20, 26, 25]  # Seems to work well with A4
+
+        for i, col in enumerate(header):
+            pdf.cell(
+                colWidths[i], 1.5 * pdf.font_size, col[0], border="B", align=col[1]
+            )
+
+        pdf.ln(2 * pdf.font_size)
+
+        # Table of information about each transaction. Numbers are right-aligned.
+        for transaction in transBatch.transactions:
+            if transaction.type == Transaction.SALG:
+                pdf.set_text_color(0, 0, 0)
+            else:
+                pdf.set_text_color(220, 0, 0)
+
+            pdf.cell(
+                colWidths[0],
+                2 * pdf.font_size,
+                str(transaction.time.strftime("%H:%M")),
+                align="R",
+            )
+            if transaction.message:
+                pdf.cell(
+                    colWidths[1], 2 * pdf.font_size, transaction.message[:49], align="L"
+                )
+            else:
+                pdf.set_font("Arial", "I", 10.0)
+                pdf.cell(
+                    colWidths[1], 2 * pdf.font_size, transaction.name[:49], align="L"
+                )
+                setNormalFont()
+
+            pdf.cell(
+                colWidths[2],
+                2 * pdf.font_size,
+                toDecimalNumber(
+                    config.stregsystem.getint("registration_fee"), grouping=True
+                )
+                if transaction.isRegistration
+                else "",
+                align="R",
+            )
+            pdf.cell(
+                colWidths[3],
+                2 * pdf.font_size,
+                toDecimalNumber(transaction.amount, grouping=True),
+                align="R",
+            )
+            pdf.cell(
+                colWidths[4],
+                2 * pdf.font_size,
+                toDecimalNumber(transaction.mpFee, grouping=True),
+                align="R",
+            )
+            pdf.cell(
+                colWidths[5],
+                2 * pdf.font_size,
+                toDecimalNumber(transaction.voucherAmount, grouping=True),
+                align="R",
+            )
+            pdf.ln(2 * pdf.font_size)
+
+
 DANISH_BANK_HOLIDAYS = DanishBankHolidays()
 
 
@@ -353,171 +713,18 @@ def makePdfFilename(directory, appendixNumber):
     return f"{directory}/{str(appendixNumber)}.pdf"
 
 
-def writePdf(transBatch, directory, appendixNumber):
+def writePdf(transBatch, directory, appendixNumber, layout, title):
     """Writes information from a day's worth of MP transactions to a PDF.
 
     Each piece of information is a cell with borders instead of the whole thing being
     a table.
     """
 
-    pdf = FPDF()
+    pdf = PDF()
+    pdf.set_auto_page_break(1, margin=13)
     pdf.add_page()
-    setNormalFont = lambda: pdf.set_font("Arial", "", 10.0)
 
-    # Header
-    pdf.ln(5)
-    pdf.set_font("Arial", "B", 16.0)
-    pdf.cell(157, 25.0, "Indbetalinger til Stregsystemet via MobilePay")
-    pdf.image("images/f-klubben.jpg", w=30)
-    pdf.ln(0.1)
-
-    setNormalFont()
-    pdf.cell(0, -10, "Bilagsdato: " + toDanishDateFormat(transBatch.bankTransferDate))
-    pdf.ln(2 * pdf.font_size)
-
-    # High-level information about a transaction batch.
-    infoLabelWidth = 60
-    infoValueWidth = 20
-    infoSpace = 1.5 * pdf.font_size
-
-    pdf.set_font("Arial", "B", 10.0)
-    pdf.cell(0, 0, "Oplysninger")
-    pdf.ln(infoSpace)
-
-    setNormalFont()
-    pdf.cell(infoLabelWidth, 0, "Dato for indbetalinger:")
-    pdf.cell(infoValueWidth, 0, toDanishDateFormat(transBatch.transferDate), align="R")
-    pdf.ln(infoSpace)
-
-    pdf.cell(infoLabelWidth, 0, "Antal indbetalinger:")
-    pdf.cell(
-        infoValueWidth,
-        0,
-        str(len(transBatch.getTransactionsByType(Transaction.SALG))),
-        align="R",
-    )
-    pdf.ln(infoSpace)
-
-    pdf.cell(infoLabelWidth, 0, "Antal tilmeldinger:")
-    pdf.cell(infoValueWidth, 0, str(transBatch.registrations), align="R")
-    pdf.ln(infoSpace)
-
-    pdf.cell(infoLabelWidth, 0, "MobilePay-gebyr, kr.:")
-    pdf.cell(
-        infoValueWidth, 0, toDecimalNumber(transBatch.mpFees, grouping=True), align="R"
-    )
-    pdf.ln(infoSpace)
-
-    pdf.cell(infoLabelWidth, 0, "Indbetalt, kr.:")
-    pdf.cell(
-        infoValueWidth,
-        0,
-        toDecimalNumber(transBatch.totalAmount, grouping=True),
-        align="R",
-    )
-    pdf.ln(infoSpace)
-
-    pdf.cell(infoLabelWidth, 0, "Til banken, kr.:")
-    pdf.cell(
-        infoValueWidth, 0, toDecimalNumber(transBatch.toBank, grouping=True), align="R"
-    )
-    pdf.ln(infoSpace)
-
-    pdf.cell(infoLabelWidth, 0, "Gavekort, kr.:")
-    pdf.cell(
-        infoValueWidth,
-        0,
-        toDecimalNumber(transBatch.voucherAmount, grouping=True),
-        align="R",
-    )
-    pdf.ln(infoSpace)
-
-    pdf.cell(infoLabelWidth, 0, "Tilmeldingsgebyr inkl. moms, kr.:")
-    pdf.cell(
-        infoValueWidth,
-        0,
-        toDecimalNumber(transBatch.registrationFees, grouping=True),
-        align="R",
-    )
-    pdf.ln(infoSpace)
-
-    pdf.cell(infoLabelWidth, 0, "Moms, kr.:")
-    pdf.cell(
-        infoValueWidth,
-        0,
-        toDecimalNumber(transBatch.registrationFees * 0.2, grouping=True),
-        align="R",
-    )
-    pdf.ln(3 * pdf.font_size)
-
-    setNormalFont()
-
-    header = [
-        ("Kl.", "R"),
-        ("Besked", "L"),
-        ("Tilm.gebyr, kr.", "R"),
-        ("Indb., kr.", "R"),
-        ("MP-gebyr, kr.", "R"),
-        ("Gavekort, kr.", "R"),
-    ]
-    colWidths = [11, 82, 25, 20, 26, 25]  # Seems to work well with A4
-
-    for i, col in enumerate(header):
-        pdf.cell(colWidths[i], 1.5 * pdf.font_size, col[0], border="B", align=col[1])
-
-    pdf.ln(2 * pdf.font_size)
-
-    # Table of information about each transaction. Numbers are right-aligned.
-    for transaction in transBatch.transactions:
-        if transaction.transactionType == Transaction.SALG:
-            pdf.set_text_color(0, 0, 0)
-        else:
-            pdf.set_text_color(220, 0, 0)
-
-        pdf.cell(
-            colWidths[0],
-            2 * pdf.font_size,
-            str(transaction.time.strftime("%H:%M")),
-            align="R",
-        )
-        if transaction.message:
-            pdf.cell(
-                colWidths[1], 2 * pdf.font_size, transaction.message[:49], align="L"
-            )
-        else:
-            pdf.set_font("Arial", "I", 10.0)
-            pdf.cell(colWidths[1], 2 * pdf.font_size, transaction.name[:49], align="L")
-            setNormalFont()
-
-        pdf.cell(
-            colWidths[2],
-            2 * pdf.font_size,
-            toDecimalNumber(
-                config.stregsystem.getint("registration_fee"), grouping=True
-            )
-            if transaction.isRegistration
-            else "",
-            align="R",
-        )
-        pdf.cell(
-            colWidths[3],
-            2 * pdf.font_size,
-            toDecimalNumber(transaction.amount, grouping=True),
-            align="R",
-        )
-        pdf.cell(
-            colWidths[4],
-            2 * pdf.font_size,
-            toDecimalNumber(transaction.mpFee, grouping=True),
-            align="R",
-        )
-        pdf.cell(
-            colWidths[5],
-            2 * pdf.font_size,
-            toDecimalNumber(transaction.voucherAmount, grouping=True),
-            align="R",
-        )
-        pdf.ln(2 * pdf.font_size)
+    layout(pdf, transBatch, title)
 
     pdf.output(makePdfFilename(directory, appendixNumber))
 
@@ -539,9 +746,26 @@ def handlePdfCreation(appendixStart, transactionBatches):
     outdir = makeAppendixRange(appendixStart, len(transactionBatches))
     Path(outdir).mkdir(parents=True, exist_ok=True)
 
-    for batch in transactionBatches:
-        writePdf(batch, outdir, appendixNumber)
-        appendixNumber += 1
+    if config.stregsystem.get("mp_number") == "90601":
+        for batch in transactionBatches:
+            writePdf(
+                batch,
+                outdir,
+                appendixNumber,
+                Layout.stregsystemLayout,
+                config.stregsystem.get("stregsystem_title"),
+            )
+            appendixNumber += 1
+    else:
+        for batch in transactionBatches:
+            writePdf(
+                batch,
+                outdir,
+                appendixNumber,
+                Layout.salesLayout,
+                config.stregsystem.get("sales_title"),
+            )
+            appendixNumber += 1
 
     return outdir
 
@@ -572,6 +796,7 @@ def main():
     logging.info(f"Done writing {csvName}")
 
     pdfDir = handlePdfCreation(args.appendix_start, transactionBatches)
+
     logging.info(
         f"Done creating {batchAmount} PDF{'s' if batchAmount > 1 else ''} in {pdfDir}/"
     )

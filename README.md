@@ -1,4 +1,4 @@
-# MpCsvAccounting <img src="images/f-klubben.jpg" width="200" align="right">
+# MpCsvAccounting <img src="images/f-klubben.png" width="200" align="right">
 
 This is a parser for MobilePay MyShop CSVs. It writes CSVs that Dinero accounting software recognizes, as well as PDFs used for documentation.
 In use by F-klubben at the Department of Computer Science at Aalborg University, Denmark.
