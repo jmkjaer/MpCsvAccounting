@@ -8,6 +8,7 @@ import re
 from pathlib import Path
 
 import holidays
+import Levenshtein
 from dateutil.easter import easter
 from fpdf import FPDF
 
@@ -33,13 +34,8 @@ class RegistrationHandler:
     Needs to be instantiated to check for registration.
     """
 
-    keywords = config.stregsystem.get("registration_keywords").split()
-    # If people find more ways to misspell the keyword, just add to config
-    # and '|'.join(keywords) in the regex instead of making more of a mess of it.
-    registrationRegex = re.compile(
-        "^(?:[\w\-\.]+[:,]?(?: | ?[+-] ?)(?i:til|ind)m(?:e|æ)ldn?(?:ing)?"
-        "|(?i:til|ind)m(?:e|æ)ldn?(?:ing)?[:,]?(?: | ?[+-] ?)[\w\-\.]+)$"
-    )
+    registrationKeywords = ["tilmeld", "tilmelding", "indmeld", "indmelding"]
+    maxLevenDist = config.stregsystem.getint("max_edit_distance")
 
     def __init__(self, amount, date, message):
         self.amount = amount
@@ -47,42 +43,35 @@ class RegistrationHandler:
         self.message = message
 
     def isIntendedRegistration(self):
-        """Checks if the message indicates that the transfer is part of registration."""
+        """Checks if the message indicates that the transfer is part of registration.
+        
+        Utilizes the Levenshtein distance to check, since misspellings of the
+        registration keywords are common.
+        """
 
-        for keyword in RegistrationHandler.keywords:
-            if keyword.lower() in self.message.lower():
-                return True
+        messageSplit = re.split("\W+", self.message)
+
+        if len(messageSplit) >= 2:  # At least username and keyword
+            for keyword in self.registrationKeywords:
+                for messageWord in messageSplit:
+                    if Levenshtein.distance(messageWord.lower(), keyword) <= self.maxLevenDist:
+                        return True
 
         return False
 
-    def checkMessageFormat(self):
-        """Purpose is to warn if not matching regex, while still treating transaction as registration.
-
-        This way, the user can edit the MP CSV if it's not actually a registration,
-        instead of the script just discarding it, which might be a mistake.
-        """
-
-        return re.fullmatch(RegistrationHandler.registrationRegex, self.message)
-
-    def checkAmount(self):
+    def isWrongRegistrationAmount(self):
         """Checks if the person has sent enough money for registration."""
 
-        return self.amount >= config.stregsystem.getint("registration_fee")
+        return self.amount < config.stregsystem.getint("registration_fee")
 
-    def checkAndDisplayRegistrationWarnings(self, correctFormat, correctAmount):
-        """Decides which warnings should be shown, and then shows them."""
+    def warnAboutWrongAmount(self):
+        """Shows warning if registration transfer includes enough money."""
 
-        if correctFormat and correctAmount:
-            return
-
-        message = f"For transaction {self.date}, DKK {toDecimalNumber(self.amount, grouping=True)} - '{self.message}':\n"
-        if not correctFormat:
-            message += "  - Wrongly formatted registration message.\n"
-        if not correctAmount:
-            message += "  - Not enough money transferred for registration.\n"
-        message += "Still treated as registration, edit infile and run again if not."
-
-        logging.warning(message)
+        logging.warning(
+            f"For transaction {self.date}, DKK {toDecimalNumber(self.amount, grouping=True)} - '{self.message}':\n"
+            "  - Not enough money transferred for registration.\n"
+            "Still treated as registration, edit infile and run again if not."
+        )
 
 
 class Transaction:
@@ -106,9 +95,8 @@ class Transaction:
             self.voucherAmount = self.amount - config.stregsystem.getint(
                 "registration_fee"
             )
-            regHandler.checkAndDisplayRegistrationWarnings(
-                regHandler.checkMessageFormat(), regHandler.checkAmount()
-            )
+            if regHandler.isWrongRegistrationAmount():
+                regHandler.warnAboutWrongAmount()
         else:
             self.isRegistration = False
             self.voucherAmount = self.amount
@@ -229,7 +217,7 @@ def readTransactionsFromFile(filePath, mpNumber):
     transactionBatches = []
     currentBatch = TransactionBatch()
 
-    transferAmount = 0  # to $mpNumber
+    transferAmount = 0  # to mp_number
     otherPlacesAmount = 0
 
     for index, row in enumerate(reader):
@@ -270,7 +258,8 @@ def readTransactionsFromFile(filePath, mpNumber):
             f"Skipped {otherPlacesAmount} transfer{'s' if otherPlacesAmount > 1 else ''} not for {mpNumber}."
         )
 
-    # The imported CSV possibly ends with a batch of sales with no "Overførsel" due to next day bank transfer being next month
+    # The imported CSV possibly ends with a batch of sales with no "Overførsel"
+    # due to next day bank transfer being next month
     if currentBatch.isActive():
         currentBatch.commit()
         transactionBatches.append(currentBatch)
