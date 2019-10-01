@@ -83,8 +83,8 @@ class Transaction:
     SALG = "Salg"
     REFUNDERING = "Refundering"
 
-    def __init__(self, type, name, amount, date, time, message, mpFee):
-        self.type = type
+    def __init__(self, transactionType, name, amount, date, time, message, mpFee):
+        self.transactionType = transactionType
         self.name = name
         self.amount = int(amount.replace(",", "").replace(".", ""))
         self.date = dt.datetime.strptime(date, "%d-%m-%Y").date()
@@ -146,7 +146,7 @@ class TransactionBatch:
         self.toBank = self.totalAmount - self.mpFees
         self.isCommitted = True
 
-    def getTransactionsByType(self, type):
+    def getTransactionsByType(self, transactionType):
         """Returns all transactions of specific type.
 
         Type is either Transaction.SALG or Transaction.REFUNDERING.
@@ -155,7 +155,7 @@ class TransactionBatch:
         if not self.isCommitted:
             raise UserWarning("Transaction batch is not committed yet.")
 
-        return [t for t in self.transactions if t.type == type]
+        return [t for t in self.transactions if t.transactionType == transactionType]
 
 
 DANISH_BANK_HOLIDAYS = DanishBankHolidays()
@@ -450,8 +450,6 @@ def writePdf(transBatch, directory, appendixNumber):
     )
     pdf.ln(3 * pdf.font_size)
 
-    transBatch.getTransactionsByType(Transaction.REFUNDERING)
-
     setNormalFont()
 
     header = [
@@ -471,7 +469,7 @@ def writePdf(transBatch, directory, appendixNumber):
 
     # Table of information about each transaction. Numbers are right-aligned.
     for transaction in transBatch.transactions:
-        if transaction.type == Transaction.SALG:
+        if transaction.transactionType == Transaction.SALG:
             pdf.set_text_color(0, 0, 0)
         else:
             pdf.set_text_color(220, 0, 0)
