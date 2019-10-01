@@ -54,7 +54,10 @@ class RegistrationHandler:
         if len(messageSplit) >= 2:  # At least username and keyword
             for keyword in self.registrationKeywords:
                 for messageWord in messageSplit:
-                    if Levenshtein.distance(messageWord.lower(), keyword) <= self.maxLevenDist:
+                    if (
+                        Levenshtein.distance(messageWord.lower(), keyword)
+                        <= self.maxLevenDist
+                    ):
                         return True
 
         return False
@@ -80,8 +83,9 @@ class Transaction:
     SALG = "Salg"
     REFUNDERING = "Refundering"
 
-    def __init__(self, type, amount, date, time, message, mpFee):
-        self.type = type
+    def __init__(self, transactionType, name, amount, date, time, message, mpFee):
+        self.transactionType = transactionType
+        self.name = name
         self.amount = int(amount.replace(",", "").replace(".", ""))
         self.date = dt.datetime.strptime(date, "%d-%m-%Y").date()
         self.time = dt.datetime.strptime(time, "%H:%M").time()
@@ -142,7 +146,7 @@ class TransactionBatch:
         self.toBank = self.totalAmount - self.mpFees
         self.isCommitted = True
 
-    def getTransactionsByType(self, type):
+    def getTransactionsByType(self, transactionType):
         """Returns all transactions of specific type.
 
         Type is either Transaction.SALG or Transaction.REFUNDERING.
@@ -151,7 +155,7 @@ class TransactionBatch:
         if not self.isCommitted:
             raise UserWarning("Transaction batch is not committed yet.")
 
-        return [t for t in self.transactions if t.type == type]
+        return [t for t in self.transactions if t.transactionType == transactionType]
 
 
 DANISH_BANK_HOLIDAYS = DanishBankHolidays()
@@ -226,6 +230,7 @@ def readTransactionsFromFile(filePath, mpNumber):
                 currentBatch.add_transaction(
                     Transaction(
                         row["Type"],
+                        row["Navn"],
                         row["Beløb"],
                         row["Dato"],
                         row["Tid"],
@@ -357,6 +362,7 @@ def writePdf(transBatch, directory, appendixNumber):
 
     pdf = FPDF()
     pdf.add_page()
+    setNormalFont = lambda: pdf.set_font("Arial", "", 10.0)
 
     # Header
     pdf.ln(5)
@@ -365,7 +371,7 @@ def writePdf(transBatch, directory, appendixNumber):
     pdf.image("images/f-klubben.jpg", w=30)
     pdf.ln(0.1)
 
-    pdf.set_font("Arial", "", 10.0)
+    setNormalFont()
     pdf.cell(0, -10, "Bilagsdato: " + toDanishDateFormat(transBatch.bankTransferDate))
     pdf.ln(2 * pdf.font_size)
 
@@ -378,7 +384,7 @@ def writePdf(transBatch, directory, appendixNumber):
     pdf.cell(0, 0, "Oplysninger")
     pdf.ln(infoSpace)
 
-    pdf.set_font("Arial", "", 10.0)
+    setNormalFont()
     pdf.cell(infoLabelWidth, 0, "Dato for indbetalinger:")
     pdf.cell(infoValueWidth, 0, toDanishDateFormat(transBatch.transferDate), align="R")
     pdf.ln(infoSpace)
@@ -444,9 +450,7 @@ def writePdf(transBatch, directory, appendixNumber):
     )
     pdf.ln(3 * pdf.font_size)
 
-    transBatch.getTransactionsByType(Transaction.REFUNDERING)
-
-    pdf.set_font("Arial", "", 10.0)
+    setNormalFont()
 
     header = [
         ("Kl.", "R"),
@@ -465,7 +469,7 @@ def writePdf(transBatch, directory, appendixNumber):
 
     # Table of information about each transaction. Numbers are right-aligned.
     for transaction in transBatch.transactions:
-        if transaction.type == Transaction.SALG:
+        if transaction.transactionType == Transaction.SALG:
             pdf.set_text_color(0, 0, 0)
         else:
             pdf.set_text_color(220, 0, 0)
@@ -476,7 +480,15 @@ def writePdf(transBatch, directory, appendixNumber):
             str(transaction.time.strftime("%H:%M")),
             align="R",
         )
-        pdf.cell(colWidths[1], 2 * pdf.font_size, transaction.message[:49], align="L")
+        if transaction.message:
+            pdf.cell(
+                colWidths[1], 2 * pdf.font_size, transaction.message[:49], align="L"
+            )
+        else:
+            pdf.set_font("Arial", "I", 10.0)
+            pdf.cell(colWidths[1], 2 * pdf.font_size, transaction.name[:49], align="L")
+            setNormalFont()
+
         pdf.cell(
             colWidths[2],
             2 * pdf.font_size,
