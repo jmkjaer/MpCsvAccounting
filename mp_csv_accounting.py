@@ -34,7 +34,14 @@ class RegistrationHandler:
     Needs to be instantiated to check for registration.
     """
 
-    registrationKeywords = ["tilmeld", "tilmelding", "indmeld", "indmelding"]
+    registrationKeywords = [
+        "tilmeld",
+        "tilmelding",
+        "tilmeldelse",
+        "indmeld",
+        "indmelding",
+        "indmeldelse",
+    ]
     maxLevenDist = config.stregsystem.getint("max_edit_distance")
 
     def __init__(self, amount, date, message):
@@ -307,7 +314,7 @@ class Layout:
 
         # Table of information about each transaction. Numbers are right-aligned.
         for transaction in transBatch.transactions:
-            if transaction.type == Transaction.SALG:
+            if transaction.transactionType == Transaction.SALG:
                 pdf.set_text_color(0, 0, 0)
             else:
                 pdf.set_text_color(220, 0, 0)
@@ -465,7 +472,7 @@ class Layout:
 
         # Table of information about each transaction. Numbers are right-aligned.
         for transaction in transBatch.transactions:
-            if transaction.type == Transaction.SALG:
+            if transaction.transactionType == Transaction.SALG:
                 pdf.set_text_color(0, 0, 0)
             else:
                 pdf.set_text_color(220, 0, 0)
