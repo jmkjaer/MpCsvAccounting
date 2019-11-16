@@ -666,48 +666,80 @@ def writeCsv(filePath, appendixStart, transactionsByBatch):
         )
 
     for batch in transactionsByBatch:
-        csvWriter.writerow(
-            [
-                currAppendix,
-                toDanishDateFormat(batch.bankTransferDate),
-                "MP fra " + batch.transferDate.strftime("%d-%m"),
-                config.dinero.get("bank"),
-                toDecimalNumber(batch.toBank),
-                None,
-            ]
-        )
-        if batch.voucherAmount > 0:
+        if config.stregsystem.get("mp_number") == "90601":
             csvWriter.writerow(
                 [
                     currAppendix,
                     toDanishDateFormat(batch.bankTransferDate),
-                    "Gavekort",
-                    config.dinero.get("gavekort"),
-                    "-" + toDecimalNumber(batch.voucherAmount),
+                    "MP fra " + batch.transferDate.strftime("%d-%m"),
+                    config.dinero.get("bank"),
+                    toDecimalNumber(batch.toBank),
                     None,
                 ]
             )
-        if batch.registrations > 0:
+            if batch.voucherAmount > 0:
+                csvWriter.writerow(
+                    [
+                        currAppendix,
+                        toDanishDateFormat(batch.bankTransferDate),
+                        "Gavekort",
+                        config.dinero.get("gavekort"),
+                        "-" + toDecimalNumber(batch.voucherAmount),
+                        None,
+                    ]
+                )
+            if batch.registrations > 0:
+                csvWriter.writerow(
+                    [
+                        currAppendix,
+                        toDanishDateFormat(batch.bankTransferDate),
+                        "Tilmeldingsgebyr",
+                        config.dinero.get("salg"),
+                        "-" + toDecimalNumber(batch.registrationFees),
+                        None,
+                    ]
+                )
             csvWriter.writerow(
                 [
                     currAppendix,
                     toDanishDateFormat(batch.bankTransferDate),
-                    "Tilmeldingsgebyr",
+                    "MP-gebyr",
+                    config.dinero.get("gebyrer"),
+                    toDecimalNumber(batch.mpFees),
+                    None,
+                ]
+            )
+        else:
+            csvWriter.writerow(
+                [
+                    currAppendix,
+                    toDanishDateFormat(batch.bankTransferDate),
+                    "Salg via MP fra " + batch.transferDate.strftime("%d-%m"),
+                    config.dinero.get("bank"),
+                    toDecimalNumber(batch.toBank),
+                    None,
+                ]
+            )
+            csvWriter.writerow(
+                [
+                    currAppendix,
+                    toDanishDateFormat(batch.bankTransferDate),
+                    "Salg",
                     config.dinero.get("salg"),
-                    "-" + toDecimalNumber(batch.registrationFees),
+                    "-" + toDecimalNumber(batch.totalAmount),
                     None,
                 ]
             )
-        csvWriter.writerow(
-            [
-                currAppendix,
-                toDanishDateFormat(batch.bankTransferDate),
-                "MP-gebyr",
-                config.dinero.get("gebyrer"),
-                toDecimalNumber(batch.mpFees),
-                None,
-            ]
-        )
+            csvWriter.writerow(
+                [
+                    currAppendix,
+                    toDanishDateFormat(batch.bankTransferDate),
+                    "MP-gebyr",
+                    config.dinero.get("gebyrer"),
+                    toDecimalNumber(batch.mpFees),
+                    None,
+                ]
+            )
 
         currAppendix += 1
 
