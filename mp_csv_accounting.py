@@ -136,7 +136,6 @@ class Transaction:
         else:
             raise UserWarning("Transaction is not done yet.")
 
-
     def checkAndEnterRegistration(self):
         """Checks if the current transaction is a registration.
 
@@ -619,7 +618,12 @@ def parseArgs():
     parser = argparse.ArgumentParser(description="Parse MP CSV and write Dinero CSV.")
     parser.add_argument("infile", help="the MP CSV file to parse")
     parser.add_argument(
-        "appendix_start", type=int, help="appendix number start in Dinero"
+        "appendix_start", type=int, help="the appendix number to start from in Dinero"
+    )
+    parser.add_argument(
+        "-n",
+        "--mp_number",
+        help="the MyShop-number whose transactions are parsed. Overrides mp_number in config.ini",
     )
     return parser.parse_args()
 
@@ -907,7 +911,10 @@ def main():
 
     try:
         transactionBatches = readTransactionsFromFile(
-            args.infile, config.stregsystem.get("mp_number")
+            args.infile,
+            config.stregsystem.get("mp_number")
+            if not args.mp_number
+            else args.mp_number,
         )
     except ValueError as e:
         logging.error(e)
