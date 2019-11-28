@@ -7,6 +7,7 @@ import logging
 import re
 from pathlib import Path
 
+import dateutil.parser
 import holidays
 import Levenshtein
 from dateutil.easter import easter
@@ -44,13 +45,9 @@ class RegistrationHandler:
     ]
     maxLevenDist = config.stregsystem.getint("max_edit_distance")
 
-    # def __init__(self, amount, date, message):
-    def __init__(self, amount, dateAndTime, comment):
-        # self.amount = amount
-        # self.date = date
-        # self.message = message
+    def __init__(self, amount, date, comment):
         self.amount = amount
-        self.dateAndTime = dateAndTime
+        self.date = date
         self.comment = comment
 
     def isIntendedRegistration(self):
@@ -82,7 +79,7 @@ class RegistrationHandler:
         """Shows warning if registration transfer includes enough money."""
 
         logging.warning(
-            f"For transaction {self.dateAndTime}, DKK {toDecimalNumber(self.amount, grouping=True)} - '{self.comment}':\n"
+            f"For transaction {self.date}, DKK {toDecimalNumber(self.amount, grouping=True)} - '{self.comment}':\n"
             "  - Not enough money transferred for registration.\n"
             "Still treated as registration, edit infile and run again if not."
         )
@@ -94,43 +91,72 @@ class Transaction:
     SALG = "Payment"
     REFUNDERING = "Refund"
 
-    # def __init__(self, transactionType, name, amount, date, time, message, mpFee):
-    def __init__(
-        self,
-        event=None,
-        amount=None,
-        dateAndTime=None,
-        customerName=None,
-        comment=None,
-        mpFee=None,
-    ):
-        # self.transactionType = transactionType
-        # self.name = name
-        # self.amount = int(amount.replace(",", "").replace(".", ""))
-        # self.date = dt.datetime.strptime(date, "%d-%m-%Y").date()
-        # self.time = dt.datetime.strptime(time, "%H:%M").time()
-        # self.message = message
-        # self.mpFee = int(mpFee.replace(",", ""))
-        self.event = event
-        self.amount = amount
-        self.dateAndTime = dateAndTime
-        self.customerName = customerName
-        self.comment = comment
-        self.mpFee = mpFee
+    def setattrs(self, **kwargs):
+        """Sets multiple attributes at once."""
 
-        # TODO
-        # regHandler = RegistrationHandler(self.amount, self.dateAndTime, self.comment)
+        for key, value in kwargs.items():
+            setattr(self, key, value)
 
-        # if regHandler.isIntendedRegistration():
-        #     self.isRegistration = True
-        #     self.voucherAmount = self.amount - config.stregsystem.getint(
-        #         "registration_fee"
-        #     )
-        #     if regHandler.isWrongRegistrationAmount():
-        #         regHandler.warnAboutWrongAmount()
-        # else:
-        #     self.isRegistration = False
-        #     self.voucherAmount = self.amount
+    def isDone(self):
+        """Checks if all important attributes have been set."""
+
+        return all(
+            hasattr(self, attr)
+            for attr in [
+                "event",
+                "amount",
+                "dateAndTime",
+                "customerName",
+                "comment",
+                "mpFee",
+            ]
+        )
+
+    def checkAndCommit(self):
+        """Checks if important attrs have been set, and sets others.
+
+        If the import transaction attributes have been set, then set others based
+        on these, e.g. date and time from dateAndTime. Also performs type conversion
+        on e.g. amount (with removed punctuation), since we want money as integers
+        instead of strings. Lastly, performs registration checks using
+        self.checkAndEnterRegistration.
+        """
+
+        if self.isDone():
+            self.amount = int(self.amount.replace(",", "").replace(".", ""))
+            self.mpFee = int(
+                self.mpFee.replace("-", "").replace(",", "").replace(".", "")
+            )
+
+            parsedDateAndTime = dateutil.parser.parse(self.dateAndTime)
+            self.date = parsedDateAndTime.date()
+            self.time = parsedDateAndTime.time()
+
+            self.checkAndEnterRegistration()
+        else:
+            raise UserWarning("Transaction is not done yet.")
+
+
+    def checkAndEnterRegistration(self):
+        """Checks if the current transaction is a registration.
+
+        Creates a RegistrationHandler to check if the amount transferred
+        is enough, and if the words in the comment matches a registration
+        keyword.
+        """
+
+        regHandler = RegistrationHandler(self.amount, self.date, self.comment)
+
+        if regHandler.isIntendedRegistration():
+            self.isRegistration = True
+            self.voucherAmount = self.amount - config.stregsystem.getint(
+                "registration_fee"
+            )
+            if regHandler.isWrongRegistrationAmount():
+                regHandler.warnAboutWrongAmount()
+        else:
+            self.isRegistration = False
+            self.voucherAmount = self.amount
 
 
 class TransactionBatch:
@@ -149,7 +175,7 @@ class TransactionBatch:
         self.isCommitted = False
 
     def add_transaction(self, transaction):
-        """Adds a transaction, and updates instance variables accordingly."""
+        """Adds a transaction, and updates attributes accordingly."""
 
         self.transactions.append(transaction)
         self.totalAmount += transaction.amount
@@ -173,7 +199,7 @@ class TransactionBatch:
         self.toBank = self.totalAmount - self.mpFees
         self.isCommitted = True
 
-    def getTransactionsByType(self, transactionType):
+    def getTransactionsByType(self, event):
         """Returns all transactions of specific type.
 
         Type is either Transaction.SALG or Transaction.REFUNDERING.
@@ -182,7 +208,7 @@ class TransactionBatch:
         if not self.isCommitted:
             raise UserWarning("Transaction batch is not committed yet.")
 
-        return [t for t in self.transactions if t.transactionType == transactionType]
+        return [t for t in self.transactions if t.event == event]
 
 
 class PDF(FPDF):
@@ -334,7 +360,7 @@ class Layout:
 
         # Table of information about each transaction. Numbers are right-aligned.
         for transaction in transBatch.transactions:
-            if transaction.transactionType == Transaction.SALG:
+            if transaction.event == Transaction.SALG:
                 pdf.set_text_color(0, 0, 0)
             else:
                 pdf.set_text_color(220, 0, 0)
@@ -614,42 +640,48 @@ def readTransactionsFromFile(filePath, mpNumber):
     transactionBatches = []
     currentBatch = TransactionBatch()
 
-    transferAmount = 0  # to mp_number
+    transferAmount = 0  # to mpNumber
     otherPlacesAmount = 0
 
     newTrans = Transaction()
     for index, row in reversed(list(enumerate(reader))):
         if row["MyShop-Number"] == mpNumber:
-            if (
-                row["Event"] == Transaction.SALG
-                or row["Event"] == Transaction.REFUNDERING
-            ):
-                # if row["MobilePay-nummer"] == mpNumber:
-                # currentBatch.add_transaction(
-                #     Transaction(
-                #         event=row["Event"],
-                #         amount=row["Amount"],
-                #         dateAndTime=row["Date and time"],
-                #         customerName=row["Customer name"],
-                #         comment=row["Comment"]
-                #     )
-                # )
-                newTrans.event = (row["Event"],)
-                newTrans.amount = (row["Amount"],)
-                newTrans.dateAndTime = (row["Date and time"],)
-                newTrans.customerName = (row["Customer name"],)
-                newTrans.comment = row["Comment"]
+            if row["Event"] == Transaction.SALG:
+                newTrans.setattrs(
+                    event=row["Event"],
+                    amount=row["Amount"],
+                    dateAndTime=row["Date and time"],
+                    customerName=row["Customer name"],
+                    comment=row["Comment"],
+                )
 
-                if newTrans.event != None and newTrans.mpFee != None:
-                    currentBatch.add_transaction(newTrans)
-                    newTrans = Transaction()
+                newTrans.checkAndCommit()
+                currentBatch.add_transaction(newTrans)
+                newTrans = Transaction()
 
                 transferAmount += 1
+
             elif row["Event"] == "Retainable":
                 newTrans.mpFee = row["Amount"]
-                if newTrans.event != None and newTrans.mpFee != None:
+                # if newTrans.event != None and newTrans.mpFee != None:
+                if hasattr(newTrans, "event") and hasattr(newTrans, "mpFee"):
+                    newTrans.checkAndCommit()
                     currentBatch.add_transaction(newTrans)
                     newTrans = Transaction()
+
+            elif row["Event"] == Transaction.REFUNDERING:
+                refund = Transaction()
+                refund.setattrs(
+                    event=row["Event"],
+                    amount=row["Amount"],
+                    dateAndTime=row["Date and time"],
+                    customerName=row["Customer name"],
+                    comment="",
+                    mpFee="0",
+                )
+                refund.checkAndCommit()
+                currentBatch.add_transaction(refund)
+                transferAmount += 1
 
             elif row["Event"] == "Transfer":
                 if currentBatch.isActive():
@@ -658,7 +690,18 @@ def readTransactionsFromFile(filePath, mpNumber):
                     currentBatch = TransactionBatch()
 
             elif row["Event"] == "ServiceFee":
-                continue
+                serviceFee = Transaction()
+                serviceFee.setattrs(
+                    event=row["Event"],
+                    amount="0",
+                    dateAndTime=row["Date and time"],
+                    customerName="",
+                    comment=row["Comment"],
+                    mpFee=row["Amount"],
+                )
+                serviceFee.checkAndCommit()
+                currentBatch.add_transaction(serviceFee)
+                transferAmount += 1
             else:
                 raise ValueError(
                     f"Line {str(index + 2)} in infile:\nUnknown transaction type '{row['Event']}'."
