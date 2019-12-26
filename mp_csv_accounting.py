@@ -905,7 +905,7 @@ def handlePdfCreation(appendixStart, transactionBatches):
 def main():
     """Reads a CSV by MP and writes a CSV recognizable by Dinero as well as PDFs."""
 
-    logging.basicConfig(level=logging.DEBUG, format="%(levelname)s:\n%(comment)s\n")
+    logging.basicConfig(level=logging.DEBUG, format="%(levelname)s:\n%(message)s\n")
 
     args = parseArgs()
 
