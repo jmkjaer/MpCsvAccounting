@@ -51,19 +51,19 @@ class RegistrationHandler:
         self.comment = comment
 
     def isIntendedRegistration(self):
-        """Checks if the message indicates that the transfer is part of registration.
+        """Checks if the comment indicates that the transfer is part of registration.
         
         Utilizes the Levenshtein distance to check, since misspellings of the
         registration keywords are common.
         """
 
-        messageSplit = re.split("\W+", self.comment)
+        commentSplit = re.split("\W+", self.comment)
 
-        if len(messageSplit) >= 2:  # At least username and keyword
+        if len(commentSplit) >= 2:  # At least username and keyword
             for keyword in self.registrationKeywords:
-                for messageWord in messageSplit:
+                for commentWord in commentSplit:
                     if (
-                        Levenshtein.distance(messageWord.lower(), keyword)
+                        Levenshtein.distance(commentWord.lower(), keyword)
                         <= self.maxLevenDist
                     ):
                         return True
@@ -905,7 +905,7 @@ def handlePdfCreation(appendixStart, transactionBatches):
 def main():
     """Reads a CSV by MP and writes a CSV recognizable by Dinero as well as PDFs."""
 
-    logging.basicConfig(level=logging.DEBUG, format="%(levelname)s:\n%(message)s\n")
+    logging.basicConfig(level=logging.DEBUG, format="%(levelname)s:\n%(comment)s\n")
 
     args = parseArgs()
 
