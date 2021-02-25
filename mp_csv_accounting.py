@@ -657,6 +657,7 @@ def readTransactionsFromFile(filePath, mpNumber):
                     dateAndTime=row["Date and time"],
                     customerName=row["Customer name"],
                     comment=row["Comment"],
+                    mpFee="0",
                 )
 
                 newTrans.checkAndCommit()
