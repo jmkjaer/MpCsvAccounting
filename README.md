@@ -17,15 +17,16 @@ python3 -m pip install --user -r requirements.txt
 
 ## Usage
 
-An example MP CSV is in the examples directory.
+Keep in mind that the input file should be the exported CSV file for transfers, not sales. The sales file will not work.
 
+An example MP CSV is in the examples directory.
 To generate CSV and PDFs for the example, pass input file and appendix start number:
 ```bash
-./mp_csv_accounting.py examples/mpExample.csv 123
+./mp_csv_accounting.py examples/example.csv 123
 ```
-The output, 123-148.csv and PDF directory 123-148/, is located in the project root.
+The output, 123-128.csv and PDF directory 123-128/, is located in the project root.
 
-**Remember to change the number in the config file to the actual Stregsystem one before real use.**
+The config file in config/config.ini is where transfers to the MP number to be processed is defined. Change this if transfers are for something other than Stregsystemet (e.g. sales for the Fyttetur auction).
 
 ## License
 

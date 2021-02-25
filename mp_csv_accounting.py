@@ -255,7 +255,7 @@ class Layout:
 
         pdf.set_font("Arial", "", 7)
         pdf.multi_cell(
-            0, 3.5, "F-Klubben-Institut for Datalogi\nCVR: 16427888\nhttp://fklub.dk/"
+            0, 3.5, "F-Klubben-Institut for Datalogi\nCVR: 16427888\nhttps://fklub.dk/"
         )
 
     @staticmethod
