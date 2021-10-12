@@ -638,7 +638,9 @@ def readTransactionsFromFile(filePath, mpNumber):
     batches before bank transfer. Amount is in øre (1/100th of a krone).
     """
 
-    file = open(filePath, "r", newline="")
+    f = open(filePath, "r", newline="")
+    file = [re.sub('[^a-åA-Å0-9-;()!"+,.:?@óöü\s]', '', row) for row in f]
+    f.close()
     reader = csv.DictReader(file, delimiter=";")
 
     transactionBatches = []
@@ -728,8 +730,6 @@ def readTransactionsFromFile(filePath, mpNumber):
     if currentBatch.isActive():
         currentBatch.commit()
         transactionBatches.append(currentBatch)
-
-    file.close()
 
     return transactionBatches
 
